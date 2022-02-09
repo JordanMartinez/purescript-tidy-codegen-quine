@@ -17,18 +17,18 @@ main = launchAff_ do
   where
   generatedMod = printModule $ unsafePartial $ codegenModule "Tidy.Codegen.Quine" do
     importOpen "Prelude"
-    effectTy <- importFrom "Effect" $ importType "Effect"
-    launchAff_Fn <- importFrom "Effect.Aff" $ importValue "launchAff_"
-    logFn <- importFrom "Effect.Class.Console" $ importValue "log"
+    ty_Effect <- importFrom "Effect" $ importType "Effect"
+    fn_launchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
+    fn_log <- importFrom "Effect.Class.Console" $ importValue "log"
     tell
-      [ declSignature "main" $ typeApp effectTy [ typeCtor "Unit" ]
+      [ declSignature "main" $ typeApp ty_Effect [ typeCtor "Unit" ]
       , declValue "main" [] do
-          exprApp launchAff_Fn
+          exprApp fn_launchAff_
             [ exprDo
-              [ doDiscard $ exprApp logFn [ exprString "This is some text I'm logging to the console" ]
+              [ doDiscard $ exprApp fn_log [ exprString "This is some text I'm logging to the console" ]
               , doDiscard $ exprApp (exprIdent "pure") [ (exprIdent "unit") ]
               ]
-              $ exprOp logFn
+              $ exprOp fn_log
                   [ binaryOp "$" $ exprApp (exprIdent "show") [ exprIdent "unit" ]
                   ]
             ]
