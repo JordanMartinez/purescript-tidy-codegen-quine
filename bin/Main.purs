@@ -20,6 +20,7 @@ import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
 import Effect.Exception (throw)
 import Effect.Ref as Ref
+import MkDir (mkdirRecAff)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff as FSA
 import Node.FS.Stats as Stats
@@ -51,6 +52,7 @@ main = do
         content <- FSA.readTextFile UTF8 inputFile
         case parseModule content of
           ParseSucceeded mod -> do
+            mkdirRecAff $ Path.dirname tidyCodegenFile
             FSA.writeTextFile UTF8 tidyCodegenFile $ printModule $ Quine.genModule generatedOutputFile mod
           _ -> log "Error when parsing file..."
 
