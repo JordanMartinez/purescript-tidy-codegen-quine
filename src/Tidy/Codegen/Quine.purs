@@ -29,7 +29,7 @@ genModule filePath (Module
     tyEffect <- importFrom "Effect" $ importType "Effect"
     fnLaunchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
     writeTextFile_ <- importFrom "Node.FS.Aff" $ importValue "writeTextFile"
-    utf8_ <- importFrom "Node.Encoding" $ importCtor "Encoding" "UTF8"
+    ctorUtf8_ <- importFrom "Node.Encoding" $ importCtor "Encoding" "UTF8"
 
     unsafePartial_ <- importFrom "Partial.Unsafe" $ importValue "unsafePartial"
     printModule_ <- importFrom "Tidy.Codegen" $ importValue "printModule"
@@ -49,7 +49,7 @@ genModule filePath (Module
             ( exprApp fnLaunchAff_
                 [ exprDo [] $
                     exprApp writeTextFile_
-                      [ utf8_
+                      [ ctorUtf8_
                       , exprString filePath
                       , exprIdent generatedMod
                       ]
