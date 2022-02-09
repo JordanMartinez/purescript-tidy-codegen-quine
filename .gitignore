@@ -9,3 +9,4 @@
 /.psa*
 /.spago
 /tidy-quine.js
+/test/snapshots/*/Generated.purs
