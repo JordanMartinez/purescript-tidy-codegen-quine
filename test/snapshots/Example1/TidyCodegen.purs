@@ -11,6 +11,9 @@ import Tidy.Codegen (printModule)
 import Tidy.Codegen.Monad (codegenModule)
 
 main :: Effect Unit
-main = launchAff_ do writeTextFile UTF8 "test/snapshots/Example1/Example1.purs" generatedMod
+main = launchAff_ do
+  writeTextFile UTF8
+    "/home/jordan/Programming/Projects/tidy-codegen-quine/test/snapshots/Example1/Generated.purs"
+    generatedMod
   where
   generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1" do pure unit
