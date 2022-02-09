@@ -7,6 +7,7 @@
   , "foldable-traversable"
   , "free"
   , "language-cst-parser"
+  , "language-cst-parser-lenses"
   , "maybe"
   , "node-buffer"
   , "node-fs"

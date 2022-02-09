@@ -76,6 +76,22 @@ in  upstream
             "https://github.com/natefaubion/purescript-language-cst-parser.git"
         , version = "v0.9.1"
         }
+    with language-cst-parser-lenses =
+        { dependencies =
+            [ "arrays"
+            , "either"
+            , "language-cst-parser"
+            , "lazy"
+            , "lists"
+            , "maybe"
+            , "prelude"
+            , "profunctor-lenses"
+            , "tuples"
+            ]
+        , repo =
+            "https://github.com/JordanMartinez/purescript-language-cst-parser-lenses.git"
+        , version = "v0.9.3"
+        }
     with tidy =
         { dependencies =
           [ "arrays"
