@@ -1,18 +1,23 @@
 { name = "my-project"
 , dependencies =
   [ "aff"
+  , "argparse-basic"
   , "arrays"
   , "console"
   , "effect"
+  , "either"
+  , "exceptions"
   , "foldable-traversable"
   , "free"
   , "identity"
+  , "integers"
   , "language-cst-parser"
   , "language-cst-parser-lenses"
   , "maybe"
   , "node-buffer"
   , "node-fs"
   , "node-fs-aff"
+  , "node-glob-basic"
   , "node-path"
   , "node-process"
   , "ordered-collections"
@@ -20,11 +25,13 @@
   , "prelude"
   , "profunctor-lenses"
   , "psci-support"
+  , "refs"
   , "safe-coerce"
+  , "strings"
   , "tidy-codegen"
   , "transformers"
   , "tuples"
   ]
 , packages = ./packages.dhall
-, sources = [ "src/**/*.purs", "test/**/*.purs" ]
+, sources = [ "src/**/*.purs", "test/**/*.purs", "bin/**/*.purs" ]
 }
