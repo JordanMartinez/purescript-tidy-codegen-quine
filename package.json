@@ -1,6 +1,6 @@
 {
   "name": "tidy-codegen-quine",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "",
   "scripts": {
     "example1": "spago test -m Test.Snapshots.Example1.Handwritten"
