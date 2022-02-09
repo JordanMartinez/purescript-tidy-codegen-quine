@@ -4,6 +4,7 @@
   "description": "",
   "scripts": {
     "bundle": "spago bundle-app -m Main -t tidy-quine.js",
-    "example1": "npm run bundle && node tidy-quine.js -o test/snapshots -g ignore test/snapshots/Example1.purs:2"
+    "example1": "npm run bundle && node tidy-quine.js -o test/snapshots -g test/snapshots/Example1 test/snapshots/Example1.purs:2",
+    "example1Gen": "npm run example1 && spago run -m Test.Snapshots.Example1.Generate"
   }
 }
