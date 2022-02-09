@@ -1,4 +1,4 @@
-module Example1.In where
+module Test.Snapshots.Example1.Handwritten where
 
 import Prelude
 
