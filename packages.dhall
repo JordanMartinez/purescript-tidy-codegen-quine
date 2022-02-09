@@ -46,8 +46,8 @@ in  upstream
           , "type-equality"
           , "unicode"
           ]
-        , repo = "https://github.com/natefaubion/purescript-tidy-codegen.git"
-        , version = "v2.0.0"
+        , repo = "https://github.com/jordanmartinez/purescript-tidy-codegen.git"
+        , version = "fixOpenImports"
         }
     with dodo-printer =
         { dependencies =
