@@ -15,6 +15,7 @@
   , "language-cst-parser-lenses"
   , "maybe"
   , "node-buffer"
+  , "node-child-process"
   , "node-fs"
   , "node-fs-aff"
   , "node-glob-basic"
