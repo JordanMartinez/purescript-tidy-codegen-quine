@@ -2,6 +2,7 @@ module Test.Snapshots.Example1.Generate where
 
 import Prelude
 
+import Control.Monad.Writer (tell)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Node.Encoding (Encoding(..))
@@ -17,4 +18,9 @@ main = launchAff_ do
     generatedMod
   where
   generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1.Generated" do
-    pure unit
+    do
+      tell
+        [ declSignature "main"
+            (typeApp (typeCtor "Requires importing type") [ typeCtor "Requires importing type" ])
+        , "This declaration is not yet supported..."
+        ]
