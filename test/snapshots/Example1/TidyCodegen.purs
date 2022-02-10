@@ -8,8 +8,8 @@ import Effect.Aff (launchAff_)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Tidy.Codegen (declSignature, printModule, typeApp, typeCtor)
-import Tidy.Codegen.Monad (codegenModule)
+import Tidy.Codegen (declSignature, printModule, typeApp)
+import Tidy.Codegen.Monad (codegenModule, importFrom, importType)
 
 main :: Effect Unit
 main = launchAff_ do
@@ -18,9 +18,12 @@ main = launchAff_ do
     generatedMod
   where
   generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1.Generated" do
+    varName <- importFrom "Some.Module" $ importType "Effect"
+    varName <- importFrom "Some.Module" $ importType "Unit"
     do
+      varName <- importFrom "Some.Module" $ importType "Effect"
+      varName <- importFrom "Some.Module" $ importType "Unit"
       tell
-        [ declSignature "main"
-            (typeApp (typeCtor "Requires importing type") [ typeCtor "Requires importing type" ])
+        [ declSignature "main" (typeApp varName [ varName ])
         , "This declaration is not yet supported..."
         ]
