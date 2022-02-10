@@ -219,6 +219,7 @@ genModule
         ]
 
     -- DeclValue (ValueBindingFields e)
+    -- DeclValue { name :: Name Ident, binders :: Array (Binder e), guarded :: Guarded e }
     DeclValue { name, binders, guarded } -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { declValue: importValue "declValue"
@@ -247,6 +248,10 @@ genModule
                 Infixl -> "Infixl"
                 Infixr -> "Infixr"
 
+          -- TODO: handle import logic
+          -- Because one can define an infix on a value, type, ctor in another file
+          -- we still need to handle the import properly here
+
           pure $ exprApp cg.declInfix
             [ ctor_Infix
             , exprInt $ snd prec
@@ -263,6 +268,10 @@ genModule
                 Infix -> "Infix"
                 Infixl -> "Infixl"
                 Infixr -> "Infixr"
+
+          -- TODO: handle import logic
+          -- Because one can define an infix on a value, type, ctor in another file
+          -- we still need to handle the import properly here
 
           pure $ exprApp cg.declInfixType
             [ ctor_Infix
@@ -463,6 +472,7 @@ genModule
           { binaryOp: importValue "binaryOp"
           }
         for binOps \(Tuple qualOp nextTy) -> do
+          -- TODO: add import handling logic for qualified name
           generatedNextType <- genType nextTy
           pure $ exprApp cg.binaryOp
             [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
@@ -481,6 +491,7 @@ genModule
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { typeOpName: importValue "typeOpName"
         }
+      -- TODO: add import handling logic for qualified name
       pure $ exprApp cg.typeOpName
         [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
         ]
@@ -550,7 +561,9 @@ genModule
     pure { lbls, mbTail }
 
   genFunDep :: Partial => ClassFundep -> Quine Void (Expr Void)
-  genFunDep = const $ pure $ exprString "genFunDep Not yet implemented"
+  genFunDep _ = do
+    -- TODO: add import handling logic for qualified name
+    pure $ exprString "genFunDep Not yet implemented"
 
   -- case _ of
   --   FundepDetermined _ neaNameIdent ->
@@ -764,6 +777,7 @@ genModule
         }
       generatedBinder <- genBinder binder
       generatedBinderOps <- for binderOps \(Tuple qualOp b) -> do
+        -- TODO: add import handling logic for qualified name
         generatedB <- genBinder b
         pure $ exprApp cg.binaryOp
           [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
@@ -945,6 +959,7 @@ genModule
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { exprIdent: importValue "exprIdent"
         }
+      -- TODO: add import handling logic for qualified name
       pure $ exprApp cg.exprIdent
         [ exprString $ viewOn qualIdent (_QualifiedNameVal (view _Ident)) ]
 
@@ -1078,6 +1093,7 @@ genModule
         }
       generatedExpr <- genExpr expr
       generatedInfixExprs <- for binOps \(Tuple qualOp nextExpr) -> do
+        -- TODO: add import handling logic for qualified name
         generatedNextExpr <- genExpr nextExpr
         pure $ exprApp cg.binaryOp
           [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
@@ -1093,6 +1109,7 @@ genModule
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { exprOpName: importValue "exprOpName"
         }
+      -- TODO: add import handling logic for qualified name
       pure $ exprApp cg.exprOpName
         [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator)) ]
 
