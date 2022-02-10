@@ -4,7 +4,7 @@
   "description": "",
   "scripts": {
     "bundle": "spago bundle-app -m Main -t tidy-quine.js",
-    "clean": "rm -vrf test/snapshots/*/Generated.purs",
+    "clean": "rm -vrf test/snapshots/*/Generated.purs test/snapshots/*/TidyCodegen.purs",
     "test": "npm run clean && spago test"
   }
 }
