@@ -21,7 +21,7 @@ import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceTok
 import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp, typeRowEmpty)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
 import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _RowVal, _SeparatedVals, _WrappedVals)
-import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, liftCodegen)
+import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportType, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
 genModule filePath outModName (Module
@@ -355,10 +355,8 @@ genModule filePath outModName (Module
 
     -- TypeConstructor (QualifiedName Proper) -> do
     TypeConstructor qualProper -> do
-      cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeCtor: importValue "typeCtor"
-          }
-      pure $ exprApp cg.typeCtor [ exprString "Requires importing type" ]
+      -- TODO: add import handling logic here...
+      doImportType "Some.Module" (viewOn qualProper (_QualifiedNameVal (view _Proper))) "varName"
 
     -- TypeWildcard SourceToken -> do
     TypeWildcard _ -> do

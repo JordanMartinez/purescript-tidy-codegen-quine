@@ -9,7 +9,7 @@ import Data.Identity (Identity)
 import Data.Map (Map)
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Types (Binder, DoStatement, Expr)
-import Tidy.Codegen (binderVar, doBind, doDiscard, exprApp, exprDo, exprOp, exprString)
+import Tidy.Codegen (binderVar, doBind, doDiscard, exprApp, exprDo, exprIdent, exprOp, exprString)
 import Tidy.Codegen.Monad (CodegenT, importFrom, importOp, importValue)
 
 type QuineState e m =
@@ -116,19 +116,18 @@ doImportOp modName opName varName = do
   pure bvar
 
 -- | varName <- importFrom "ModName" $ importType "Type"
-doImportType :: forall e m. Partial => Monad m => String -> String -> String -> QuineT e m (Binder e)
+doImportType :: forall e m. Partial => Monad m => String -> String -> String -> QuineT e m (Expr e)
 doImportType modName tyName varName = do
   cg <- liftCodegen $ importFrom "Tidy.Codegen.Monad"
     { importFrom: importValue "importFrom"
     , importType: importValue "importType"
     }
   dollar <- liftCodegen $ importFrom "Prelude" $ importOp "$"
-  let bvar = binderVar varName
-  appendImport $ doBind bvar $
+  appendImport $ doBind (binderVar varName) $
     exprOp (exprApp cg.importFrom [ exprString modName ])
       [ dollar.binaryOp $ exprApp cg.importType [ exprString tyName ]
       ]
-  pure bvar
+  pure $ exprIdent varName
 
 -- | varName <- importFrom "ModName" $ importTypeAll "TypeName"
 doImportTypeAll :: forall e m. Partial => Monad m => String -> String -> String -> QuineT e m (Binder e)
