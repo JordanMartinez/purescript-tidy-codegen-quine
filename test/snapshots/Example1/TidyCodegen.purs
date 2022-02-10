@@ -7,7 +7,7 @@ import Effect.Aff (launchAff_)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Tidy.Codegen (declSignature, printModule, typeCtor)
+import Tidy.Codegen (declSignature, printModule, typeApp, typeCtor)
 import Tidy.Codegen.Monad (codegenModule)
 
 main :: Effect Unit
