@@ -1,7 +1,7 @@
 module Tidy.Codegen.Quine where
 
 import Prelude
-import Prim hiding (Type)
+import Prim hiding (Type, Row)
 
 import Control.Monad.State (get)
 import Control.Monad.Writer (tell)
@@ -16,11 +16,11 @@ import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
-import PureScript.CST.Types (ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Ident, Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Type(..), TypeVarBinding(..))
-import PureScript.CST.Types.Lens (_Ident, _Operator, _Proper, _SourceToken, _TokLowerName)
-import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp)
+import PureScript.CST.Types (ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Ident, Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Row, Type(..), TypeVarBinding(..), Wrapped)
+import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
+import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp, typeRowEmpty)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
-import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _SeparatedVals, _WrappedVals)
+import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _RowVal, _SeparatedVals, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
@@ -379,11 +379,26 @@ genModule filePath outModName (Module
 
     -- TypeRow (Wrapped (Row e))
     TypeRow wrappedRow -> do
-      pure $ exprString "Type Row not supported yet"
+      -- typeRow [ Tuple "labelName" $ typeCtor "TypeName" ] $ Just (typeVar "r")
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeRow: importValue "typeRow"
+          }
+      { lbls, mbTail } <- genWrappedRow wrappedRow
+      pure $ exprApp cg.typeRow
+        [ exprArray lbls
+        , mbTail
+        ]
 
     -- TypeRecord (Wrapped (Row e))
     TypeRecord wrappedRow -> do
-      pure $ exprString "Type Record not supported yet"
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeRecord: importValue "typeRecord"
+          }
+      { lbls, mbTail } <- genWrappedRow wrappedRow
+      pure $ exprApp cg.typeRecord
+        [ exprArray lbls
+        , mbTail
+        ]
 
     -- TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)
     TypeForall _ tyVars _ ty -> do
@@ -480,11 +495,34 @@ genModule filePath outModName (Module
       pure $ exprApp cg.typeParens [ generatedType ]
 
     -- TypeUnaryRow SourceToken (Type e)
-    TypeUnaryRow _ ty -> do
-      pure $ exprString "TypeUnaryRow not supported by tidy codegen yet"
+    TypeUnaryRow _ _ty -> do
+      -- Not sure if this is correct....
+      liftCodegen $ importFrom "Tidy.Codegen" $ importValue "typeRowEmpty"
 
     TypeError e ->
       absurd e
+
+  genWrappedRow :: Partial => Wrapped (Row Void) -> Quine Void { lbls :: Array (Expr Void), mbTail :: Expr Void }
+  genWrappedRow wrappedRow = do
+    let
+      { labels, tail } = view (_WrappedVals <<< _RowVal) wrappedRow
+    lbls <- do
+      ctor_Tuple <- liftCodegen $ importFrom "Data.Tuple" $ importCtor "Tuple" "Tuple"
+      for labels \r -> do
+        generatedType <- genType r.value
+        pure $ exprApp ctor_Tuple
+          [ exprString $ view (_NameVal <<< _Label) r.label
+          , generatedType
+          ]
+    mbTail <- case tail of
+      Nothing -> do
+        liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Nothing"
+      Just ty -> do
+        ctor_Just <- liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Just"
+        generatedType <- genType ty
+        pure $ exprApp ctor_Just
+          [ generatedType ]
+    pure { lbls, mbTail }
 
   genFunDep :: Partial => ClassFundep -> Quine Void (Expr Void)
   genFunDep = const $ pure $ exprString "genFunDep Not yet implemented"
