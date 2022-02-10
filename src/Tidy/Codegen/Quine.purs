@@ -165,12 +165,9 @@ genModule filePath outModName (Module
     -- DeclDerive SourceToken (Maybe SourceToken) (InstanceHead e)
     DeclDerive _ _ { name, constraints, className, types } -> do
       -- declDerive Nothing [ typeCtor "Constraint" ] "ClassName" [ typCtor "Type" ]
-      maybeName <- case preview (_Just <<< _1 <<< _NameVal <<< _Ident) name of
-        Nothing -> do
-          liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Nothing"
-        Just instName -> do
-          ctor_Just <- liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Just"
-          pure $ exprApp ctor_Just [ exprString instName ]
+      maybeName <- (preview (_Just <<< _1 <<< _NameVal <<< _Ident) name)
+        # genMaybe \ctor_Just instName -> do
+            pure $ exprApp ctor_Just [ exprString instName ]
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { declDerive: importValue "declDerive"
         }
@@ -531,14 +528,10 @@ genModule filePath outModName (Module
           [ exprString $ view (_NameVal <<< _Label) r.label
           , generatedType
           ]
-    mbTail <- case tail of
-      Nothing -> do
-        liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Nothing"
-      Just ty -> do
-        ctor_Just <- liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Just"
-        generatedType <- genType ty
-        pure $ exprApp ctor_Just
-          [ generatedType ]
+    mbTail <- tail # genMaybe \ctor_Just ty -> do
+      generatedType <- genType ty
+      pure $ exprApp ctor_Just
+        [ generatedType ]
     pure { lbls, mbTail }
 
   genFunDep :: Partial => ClassFundep -> Quine Void (Expr Void)
@@ -570,7 +563,9 @@ genModule filePath outModName (Module
     -- declInstance mbName mbConstraints className tyCtors [ instValues ]
     for instances \inst -> do
       let { head, body } = view _InstanceVal inst
-      mbName <- genMaybe (\just val -> exprApp just [ exprString $ viewOn val (_NameVal <<< _Ident) ]) head.name
+      mbName <- head.name # genMaybe \ctor_Just val -> do
+        pure $ exprApp ctor_Just
+          [ exprString $ viewOn val (_NameVal <<< _Ident) ]
       generatedConstraints <- traverse genType head.constraints
       generatedTypes <- traverse genType head.types
       generatedInstances <- genInstVals body
@@ -625,10 +620,10 @@ genModule filePath outModName (Module
       pure $ exprString "TODO"
 
 
-genMaybe :: forall a. Partial => (Expr Void -> a -> Expr Void) -> Maybe a -> Quine Void (Expr Void)
+genMaybe :: forall a. Partial => (Expr Void -> a -> Quine Void (Expr Void)) -> Maybe a -> Quine Void (Expr Void)
 genMaybe f = case _ of
   Nothing -> do
     liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Nothing"
   Just val -> do
     ctor_Just <- liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Just"
-    pure $ f ctor_Just val
+    f ctor_Just val
