@@ -20,10 +20,7 @@ main = launchAff_ do
   generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1.Generated" do
     varName <- importFrom "Some.Module" $ importType "Effect"
     varName <- importFrom "Some.Module" $ importType "Unit"
-    do
-      varName <- importFrom "Some.Module" $ importType "Effect"
-      varName <- importFrom "Some.Module" $ importType "Unit"
-      tell
-        [ declSignature "main" (typeApp varName [ varName ])
-        , "This declaration is not yet supported..."
-        ]
+    tell
+      [ declSignature "main" (typeApp varName [ varName ])
+      , "This declaration is not yet supported..."
+      ]
