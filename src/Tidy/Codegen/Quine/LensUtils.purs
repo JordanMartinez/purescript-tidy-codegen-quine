@@ -7,9 +7,12 @@ import Data.Array as Array
 import Data.Lens (Fold', Lens', _Just, folded, preview, to, toArrayOf)
 import Data.Maybe (maybe)
 import Data.Tuple (snd)
-import PureScript.CST.RecordLens (_name, _value)
-import PureScript.CST.Types (DelimitedNonEmpty, Labeled, Name, OneOrDelimited(..), QualifiedName, Separated, Wrapped)
-import PureScript.CST.Types.Lens (_Labeled, _ModuleName, _Name, _QualifiedName, _Separated, _Wrapped)
+import PureScript.CST.RecordLens (_header, _name, _value)
+import PureScript.CST.Types (DelimitedNonEmpty, Labeled, Module, Name, OneOrDelimited(..), QualifiedName, Separated, Wrapped)
+import PureScript.CST.Types.Lens (_Labeled, _Module, _ModuleHeader, _ModuleName, _Name, _QualifiedName, _Separated, _Wrapped)
+
+_ModuleNameFull :: forall e. Lens' (Module e) String
+_ModuleNameFull = _Module <<< _header <<< _ModuleHeader <<< _name <<< _NameVal <<< _ModuleName
 
 _WrappedVals :: forall a. Lens' (Wrapped a) a
 _WrappedVals = _Wrapped <<< _value

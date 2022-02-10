@@ -27,10 +27,10 @@ import Node.Path (FilePath)
 import Node.Path as Path
 import Node.Process as Process
 import PureScript.CST (RecoveredParserResult(..), parseModule)
-import PureScript.CST.RecordLens (_header, _name)
-import PureScript.CST.Types.Lens (_Module, _ModuleHeader, _ModuleName, _Name)
+import PureScript.CST.Types (ModuleName(..))
 import Tidy.Codegen (printModule)
 import Tidy.Codegen.Quine as Quine
+import Tidy.Codegen.Quine.LensUtils (_ModuleNameFull)
 
 main :: Effect Unit
 main = launchAff_ do
@@ -39,17 +39,19 @@ main = launchAff_ do
   for_ files \filePath -> do
     let
       bname = Path.basenameWithoutExt filePath (Path.extname filePath)
-      tidyCodegenFile = Path.concat [ Path.dirname filePath, bname , "TidyCodegen.purs" ]
-      genOutputFile = Path.concat [ Path.dirname filePath, bname , "Generated.purs" ]
+      tidyCodegenFile = Path.concat [ Path.dirname filePath, bname, "TidyCodegen.purs" ]
+      genOutputFile = Path.concat [ Path.dirname filePath, bname, "Generated.purs" ]
     log $ "Testing '" <> bname <> "'..."
     fileContent <- FSA.readTextFile UTF8 filePath
     case parseModule fileContent of
       ParseSucceeded mod -> do
-        FSA.writeTextFile UTF8 tidyCodegenFile $ printModule $ Quine.genModule genOutputFile mod
         let
-          origModName = view (_Module <<< _header <<< _ModuleHeader <<< _name <<< _Name <<< _name <<< _ModuleName) mod
-          tidyCodegenMod = origModName <> ".Generate"
-        res <- execAsync ("spago test -m " <> tidyCodegenMod) $ defaultExecOptions { cwd = Just "." }
+          origModName = view _ModuleNameFull mod
+          outModName = Just $ ModuleName $ origModName <> ".Generated"
+          tidyCodegenMod = Quine.genModule genOutputFile outModName mod
+          tidyModName = view _ModuleNameFull tidyCodegenMod
+        FSA.writeTextFile UTF8 tidyCodegenFile $ printModule $ tidyCodegenMod
+        res <- execAsync ("spago test -m " <> tidyModName) $ defaultExecOptions { cwd = Just "." }
         case res.error of
           Just e -> do
             liftEffect $ flip Ref.modify_ invalidGenerations \arr ->

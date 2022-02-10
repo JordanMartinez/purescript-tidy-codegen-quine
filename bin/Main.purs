@@ -53,7 +53,7 @@ main = do
         case parseModule content of
           ParseSucceeded mod -> do
             mkdirRecAff $ Path.dirname tidyCodegenFile
-            FSA.writeTextFile UTF8 tidyCodegenFile $ printModule $ Quine.genModule generatedOutputFile mod
+            FSA.writeTextFile UTF8 tidyCodegenFile $ printModule $ Quine.genModule generatedOutputFile Nothing mod
           _ -> log "Error when parsing file..."
 
 globsToFileInfo :: String -> String -> Array PrefixedGlob -> Aff (Array FileInfo)

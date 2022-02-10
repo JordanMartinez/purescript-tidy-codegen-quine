@@ -14,6 +14,7 @@
   , "language-cst-parser"
   , "language-cst-parser-lenses"
   , "maybe"
+  , "newtype"
   , "node-buffer"
   , "node-child-process"
   , "node-fs"

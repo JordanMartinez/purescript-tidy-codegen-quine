@@ -10,7 +10,8 @@ import Data.Foldable (for_)
 import Data.Lens (_1, _Just, folded, preview, toArrayOf, toArrayOfOn, view, viewOn)
 import Data.Lens.Lens.Tuple (_2)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isNothing)
+import Data.Maybe (Maybe(..), isNothing, maybe)
+import Data.Newtype (unwrap)
 import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
@@ -23,8 +24,8 @@ import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, liftCodegen)
 import Tidy.Codegen.Quine.Utils (exprApp1)
 
-genModule :: String -> Module Void -> Module Void
-genModule filePath (Module
+genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
+genModule filePath outModName (Module
   { header: ModuleHeader
       { name: Name { name: ModuleName originalModuleName }
       , exports: originalExports
@@ -70,7 +71,7 @@ genModule filePath (Module
                     exprOp printModule_
                       [ prelude.opDollar.binaryOp unsafePartial_
                       , prelude.opDollar.binaryOp $ codegenModule_ `exprApp`
-                          [ exprString originalModuleName
+                          [ exprString $ maybe originalModuleName unwrap outModName
                           , generatedDoBlock
                           ]
                       ]
