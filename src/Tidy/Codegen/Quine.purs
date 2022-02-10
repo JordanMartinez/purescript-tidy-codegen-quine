@@ -6,6 +6,7 @@ import Prim hiding (Type, Row)
 import Control.Monad.State (get)
 import Control.Monad.Writer (tell)
 import Data.Array.NonEmpty as NEA
+import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Either (either)
 import Data.Lens (_1, _Just, folded, preview, toArrayOf, toArrayOfOn, view, viewOn)
 import Data.Lens.Lens.Tuple (_2)
@@ -16,11 +17,11 @@ import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
-import PureScript.CST.Types (Binder, ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Guarded(..), Ident, Instance, InstanceBinding(..), Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Row, Type(..), TypeVarBinding(..), Wrapped)
+import PureScript.CST.Types (Binder, ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident, Instance, InstanceBinding(..), Labeled, LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), PatternGuard, Role(..), Row, Type(..), TypeVarBinding(..), Where, Wrapped)
 import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
 import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
-import Tidy.Codegen.Quine.LensUtils (_InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _RowVal, _SeparatedVals, _WrappedVals)
+import Tidy.Codegen.Quine.LensUtils (_GuardedExprVal, _InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _PatternGuardVal, _QualifiedNameVal, _RowVal, _SeparatedVals, _WhereVal, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportType, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
@@ -216,7 +217,7 @@ genModule filePath outModName (Module
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { declValue: importValue "declValue"
         }
-      generatedBinders <- genBinders binders
+      generatedBinders <- traverse genBinder binders
       generatedGuard <- genGuarded guarded
       pure $ exprApp cg.declValue
         [ exprString $ viewOn name (_NameVal <<< _Ident)
@@ -607,7 +608,7 @@ genModule filePath outModName (Module
         cg <- liftCodegen $ importFrom "Tidy.Codegen"
             { instValue: importValue "instValue"
             }
-        generatedBinders <- genBinders binders
+        generatedBinders <- traverse genBinder binders
         generatedGuard <- genGuarded guarded
         pure $ exprApp cg.instValue
           [ exprString $ viewOn name (_NameVal <<< _Ident)
@@ -615,17 +616,115 @@ genModule filePath outModName (Module
           , generatedGuard
           ]
 
-  genBinders :: Partial => Array (Binder Void) -> Quine Void (Array (Expr Void))
-  genBinders binders = do
-    for binders \_ ->
+  genBinder :: Partial => Binder Void -> Quine Void (Expr Void)
+  genBinder = case _ of
+    _ ->
       pure $ exprString "TODO"
 
   genGuarded :: Partial => Guarded Void -> Quine Void (Expr Void)
   genGuarded = case _ of
-    Unconditional _ wher ->
-      pure $ exprString "TODO"
-    Guarded guardExprArr -> do
-      pure $ exprString "TODO"
+    Unconditional _ wher -> do
+      genWhere wher
+    Guarded guardedExprArr -> do
+      genGuardedExprs guardedExprArr
+
+  genWhere :: Partial => Where Void -> Quine Void (Expr Void)
+  genWhere wher = do
+    let { expr, bindings } = viewOn wher _WhereVal
+    cg <- liftCodegen $ importFrom "Tidy.Codegen"
+      { exprWhere: importValue "exprWhere"
+      }
+    generatedExpr <- genExpr expr
+    generatedLetBinds <- genLetBindings bindings
+    pure $ exprApp cg.exprWhere
+      [ generatedExpr
+      , exprArray generatedLetBinds
+      ]
+
+  genLetBindings :: Partial => Array (LetBinding Void) -> Quine Void (Array (Expr Void))
+  genLetBindings binds = do
+    for binds case _ of
+      -- LetBindingSignature (Labeled (Name Ident) (Type e))
+      LetBindingSignature lbld -> do
+        let { label, value } = viewOn lbld _LabeledVals
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { letSignature: importValue "letSignature"
+          }
+        generatedType <- genType value
+        pure $ exprApp cg.letSignature
+          [ exprString $ viewOn label (_NameVal <<< _Ident)
+          , generatedType
+          ]
+
+      -- LetBindingName (ValueBindingFields e)
+      LetBindingName { name, binders, guarded } -> do
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { letValue: importValue "letValue"
+          }
+        generatedBinders <- traverse genBinder binders
+        generatedGuard <- genGuarded guarded
+        pure $ exprApp cg.letValue
+          [ exprString $ viewOn name (_NameVal <<< _Ident)
+          , exprArray generatedBinders
+          , generatedGuard
+          ]
+
+      -- LetBindingPattern (Binder e) SourceToken (Where e)
+      LetBindingPattern binder _ wher -> do
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { letBinder: importValue "letBinder"
+          }
+        generatedBinder <- genBinder binder
+        generatedWhere <- genWhere wher
+        pure $ exprApp cg.letBinder
+          [ generatedBinder
+          , generatedWhere
+          ]
+
+      LetBindingError e ->
+        absurd e
+
+  genGuardedExprs :: Partial => NonEmptyArray (GuardedExpr Void) -> Quine Void (Expr Void)
+  genGuardedExprs geArr = do
+    cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { guardBranch: importValue "guardBranch"
+        }
+    guards <- for geArr \guardedExpr -> do
+      let r = viewOn guardedExpr _GuardedExprVal
+      generatedPatterns <- traverse genPatternGuard r.patterns
+      generatedWhere <- genWhere r.where
+      pure $ exprApp cg.guardBranch
+        [ exprArray generatedPatterns
+        , generatedWhere
+        ]
+
+    pure $ exprArray $ NEA.toArray guards
+
+  genPatternGuard :: Partial => PatternGuard Void -> Quine Void (Expr Void)
+  genPatternGuard pGuard = do
+    let { binder, expr } = viewOn pGuard _PatternGuardVal
+    generatedExpr <- genExpr expr
+    case binder of
+      Nothing -> do
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { guardExpr: importValue "guardExpr"
+          }
+        pure $ exprApp cg.guardExpr
+          [ generatedExpr
+          ]
+      Just b -> do
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { guardBinder: importValue "guardBinder"
+          }
+        generatedBinder <- genBinder b
+        pure $ exprApp cg.guardBinder
+          [ generatedBinder
+          , generatedExpr
+          ]
+
+  genExpr :: Partial => Expr Void -> Quine Void (Expr Void)
+  genExpr = case _ of
+    _ -> pure $ exprString "Todo"
 
 
 genMaybe :: forall a. Partial => (Expr Void -> a -> Quine Void (Expr Void)) -> Maybe a -> Quine Void (Expr Void)

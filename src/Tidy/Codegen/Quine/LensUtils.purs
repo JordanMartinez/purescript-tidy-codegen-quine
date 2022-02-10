@@ -8,8 +8,8 @@ import Data.Lens (Fold', Lens', _1, _2, _Just, folded, preview, previewOn, to, t
 import Data.Maybe (Maybe, maybe)
 import Data.Tuple (snd)
 import PureScript.CST.RecordLens (_header, _name, _value)
-import PureScript.CST.Types (DelimitedNonEmpty, Ident, Instance, InstanceBinding, Label, Labeled, Module, Name, OneOrDelimited(..), Proper, QualifiedName, Row, Separated, Type, Wrapped)
-import PureScript.CST.Types.Lens (_Instance, _Labeled, _Module, _ModuleHeader, _ModuleName, _Name, _QualifiedName, _Row, _Separated, _Wrapped)
+import PureScript.CST.Types (Binder, DelimitedNonEmpty, Expr, GuardedExpr, Ident, Instance, InstanceBinding, Label, Labeled, LetBinding, Module, Name, OneOrDelimited(..), PatternGuard, Proper, QualifiedName, Row, Separated, Type, Where, Wrapped)
+import PureScript.CST.Types.Lens (_GuardedExpr, _Instance, _Labeled, _Module, _ModuleHeader, _ModuleName, _Name, _PatternGuard, _QualifiedName, _Row, _Separated, _Where, _Wrapped)
 
 _ModuleNameFull :: forall e. Lens' (Module e) String
 _ModuleNameFull = _Module <<< _header <<< _ModuleHeader <<< _name <<< _NameVal <<< _ModuleName
@@ -68,4 +68,43 @@ _InstanceVal = _Instance <<< to \{ head, body } ->
       , types: head.types
       }
   , body: toArrayOfOn body (_Just <<< _2 <<< folded)
+  }
+
+_WhereVal
+  :: forall r e
+   . Fold'
+      r
+      (Where e)
+      { expr :: Expr e
+      , bindings :: Array (LetBinding e)
+      }
+_WhereVal = _Where <<< to \rec ->
+  { expr: rec.expr
+  , bindings: toArrayOfOn rec.bindings (_Just <<< _2 <<< folded)
+  }
+
+_GuardedExprVal
+  :: forall r e
+   . Fold'
+      r
+      (GuardedExpr e)
+      { patterns :: Array (PatternGuard e)
+      , where :: Where e
+      }
+_GuardedExprVal = _GuardedExpr <<< to \rec ->
+  { patterns: toArrayOfOn rec.patterns (_SeparatedVals <<< folded)
+  , where: rec.where
+  }
+
+_PatternGuardVal
+  :: forall r e
+   . Fold'
+      r
+      (PatternGuard e)
+      { binder :: Maybe (Binder e)
+      , expr :: Expr e
+      }
+_PatternGuardVal = _PatternGuard <<< to \rec ->
+  { binder: preview (_Just <<< _1) rec.binder
+  , expr: rec.expr
   }
