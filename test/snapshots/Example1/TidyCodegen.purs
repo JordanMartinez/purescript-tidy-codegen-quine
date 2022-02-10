@@ -8,7 +8,7 @@ import Effect.Aff (launchAff_)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Tidy.Codegen (declSignature, printModule, typeApp)
+import Tidy.Codegen (declSignature, declValue, exprWhere, printModule, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importFrom, importType)
 
 main :: Effect Unit
@@ -22,5 +22,5 @@ main = launchAff_ do
     varName <- importFrom "Some.Module" $ importType "Unit"
     tell
       [ declSignature "main" (typeApp varName [ varName ])
-      , "This declaration is not yet supported..."
+      , declValue "main" [] (exprWhere "Todo" [])
       ]
