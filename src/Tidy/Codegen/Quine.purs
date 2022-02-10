@@ -702,7 +702,6 @@ genModule
         [ exprArray generatedPatterns
         , generatedWhere
         ]
-
     pure $ exprArray $ NEA.toArray guards
 
   genPatternGuard :: Partial => PatternGuard Void -> Quine Void (Expr Void)
