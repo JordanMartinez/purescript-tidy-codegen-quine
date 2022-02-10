@@ -3,12 +3,14 @@ module Test.Snapshots.DataDecls.Generate where
 import Prelude
 
 import Control.Monad.Writer (tell)
+import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Tidy.Codegen (dataCtor, declData, declDataSignature, declNewtype, declType, printModule, typeApp, typeArrow, typeCtor, typeForall, typeParens, typeVar, typeVarKinded)
+import Tidy.Codegen (dataCtor, declData, declDataSignature, declNewtype, declType, printModule, typeApp, typeArrow, typeCtor, typeForall, typeParens, typeRecord, typeVar, typeVarKinded)
 import Tidy.Codegen.Monad (codegenModule)
 
 main :: Effect Unit
@@ -24,7 +26,8 @@ main = launchAff_ do
         , declData "OneCtor" [] [ dataCtor "OneCtor" [] ]
         , declData "TwoCtors" [] [ dataCtor "Ctor1" [], dataCtor "Ctor2" [] ]
         , declNewtype "NType" [] "NType" (typeCtor "Requires importing type")
-        , declType "TypeAlias" [] "Type Record not supported yet"
+        , declType "TypeAlias" []
+            (typeRecord [ Tuple "a" (typeCtor "Requires importing type") ] Nothing)
         , declNewtype "NTypeAlias" [] "NTypeAlias" (typeCtor "Requires importing type")
         , declData "DTyVars"
             [ typeVar "a", typeVar "b", typeVarKinded "c" (typeCtor "Requires importing type") ]
@@ -49,7 +52,7 @@ main = launchAff_ do
                         [ typeVar "a", typeParens (typeApp (typeVar "b") [ typeVar "c" ]) ]
                     )
                 ]
-            , dataCtor "C5" [ "Type Record not supported yet" ]
+            , dataCtor "C5" [ typeRecord [ Tuple "foo" (typeVar "a") ] Nothing ]
             , dataCtor "C6"
                 [ typeParens
                     ( typeApp (typeCtor "Requires importing type")
