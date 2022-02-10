@@ -56,13 +56,12 @@ appendImport :: forall e m. Monad m => DoStatement e -> QuineT e m Unit
 appendImport doStatement = modify_ \s -> s { imports = Array.snoc s.imports doStatement }
 
 -- | importOpen "ModName"
-doImportOpen:: forall e m. Partial => Monad m => String -> QuineT e m Unit
+doImportOpen :: forall e m. Partial => Monad m => String -> QuineT e m Unit
 doImportOpen modName = do
   cg <- liftCodegen $ importFrom "Tidy.Codegen.Monad"
     { importOpen: importValue "importOpen"
     }
   appendImport $ doDiscard $ exprApp cg.importOpen [ exprString modName ]
-
 
 -- | varName <- importFrom "ModName" $ importValue "valueName"
 doImportValue :: forall e m. Partial => Monad m => String -> String -> String -> QuineT e m (Binder e)

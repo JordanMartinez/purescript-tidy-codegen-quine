@@ -31,7 +31,7 @@ _NameVal = _Name <<< _name
 
 _OneOrDelimitedVals :: forall r a. Fold' r (OneOrDelimited a) (Array a)
 _OneOrDelimitedVals = to case _ of
-  One a -> [a]
+  One a -> [ a ]
   Many delNE -> toArrayOf (_DelimitedNonEmptyVals <<< folded) delNE
 
 _QualifiedNameVal :: forall r a. (a -> String) -> Fold' r (QualifiedName a) String
@@ -50,16 +50,16 @@ _RowVal = _Row <<< to \rec ->
 _InstanceVal
   :: forall e r
    . Fold'
-      r
-      (Instance e)
-      { head ::
-          { name :: Maybe (Name Ident)
-          , constraints :: Array (Type e)
-          , className :: QualifiedName Proper
-          , types :: Array (Type e)
-          }
-      , body :: Array (InstanceBinding e)
-      }
+       r
+       (Instance e)
+       { head ::
+           { name :: Maybe (Name Ident)
+           , constraints :: Array (Type e)
+           , className :: QualifiedName Proper
+           , types :: Array (Type e)
+           }
+       , body :: Array (InstanceBinding e)
+       }
 _InstanceVal = _Instance <<< to \{ head, body } ->
   { head:
       { name: previewOn head.name (_Just <<< _1)
@@ -73,11 +73,11 @@ _InstanceVal = _Instance <<< to \{ head, body } ->
 _WhereVal
   :: forall r e
    . Fold'
-      r
-      (Where e)
-      { expr :: Expr e
-      , bindings :: Array (LetBinding e)
-      }
+       r
+       (Where e)
+       { expr :: Expr e
+       , bindings :: Array (LetBinding e)
+       }
 _WhereVal = _Where <<< to \rec ->
   { expr: rec.expr
   , bindings: toArrayOfOn rec.bindings (_Just <<< _2 <<< folded)
@@ -86,11 +86,11 @@ _WhereVal = _Where <<< to \rec ->
 _GuardedExprVal
   :: forall r e
    . Fold'
-      r
-      (GuardedExpr e)
-      { patterns :: Array (PatternGuard e)
-      , where :: Where e
-      }
+       r
+       (GuardedExpr e)
+       { patterns :: Array (PatternGuard e)
+       , where :: Where e
+       }
 _GuardedExprVal = _GuardedExpr <<< to \rec ->
   { patterns: toArrayOfOn rec.patterns (_SeparatedVals <<< folded)
   , where: rec.where
@@ -99,11 +99,11 @@ _GuardedExprVal = _GuardedExpr <<< to \rec ->
 _PatternGuardVal
   :: forall r e
    . Fold'
-      r
-      (PatternGuard e)
-      { binder :: Maybe (Binder e)
-      , expr :: Expr e
-      }
+       r
+       (PatternGuard e)
+       { binder :: Maybe (Binder e)
+       , expr :: Expr e
+       }
 _PatternGuardVal = _PatternGuard <<< to \rec ->
   { binder: preview (_Just <<< _1) rec.binder
   , expr: rec.expr

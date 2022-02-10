@@ -25,56 +25,60 @@ import Tidy.Codegen.Quine.LensUtils (_GuardedExprVal, _InstanceVal, _LabeledVals
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportType, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
-genModule filePath outModName (Module
-  { header: ModuleHeader
-      { name: Name { name: ModuleName originalModuleName }
-      , exports: originalExports
-      , imports: originalImports
+genModule
+  filePath
+  outModName
+  ( Module
+      { header: ModuleHeader
+          { name: Name { name: ModuleName originalModuleName }
+          , exports: originalExports
+          , imports: originalImports
+          }
+      , body: ModuleBody { decls: originalDeclarations }
       }
-  , body: ModuleBody { decls: originalDeclarations }
-  }) = unsafePartial $ codegenModule (originalModuleName <> ".Generate") do
-    importOpen "Prelude"
-    prelude <- importFrom "Prelude"
-      { ty_Unit: importType "Unit"
-      , op_dollar: importOp "$"
-      }
-    ty_Effect <- importFrom "Effect" $ importType "Effect"
-    fn_launchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
-    fn_writeTextFile <- importFrom "Node.FS.Aff" $ importValue "writeTextFile"
-    ctor_Utf8 <- importFrom "Node.Encoding" $ importCtor "Encoding" "UTF8"
+  ) = unsafePartial $ codegenModule (originalModuleName <> ".Generate") do
+  importOpen "Prelude"
+  prelude <- importFrom "Prelude"
+    { ty_Unit: importType "Unit"
+    , op_dollar: importOp "$"
+    }
+  ty_Effect <- importFrom "Effect" $ importType "Effect"
+  fn_launchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
+  fn_writeTextFile <- importFrom "Node.FS.Aff" $ importValue "writeTextFile"
+  ctor_Utf8 <- importFrom "Node.Encoding" $ importCtor "Encoding" "UTF8"
 
-    fn_unsafePartial <- importFrom "Partial.Unsafe" $ importValue "unsafePartial"
-    fn_printModule <- importFrom "Tidy.Codegen" $ importValue "printModule"
-    fn_codegenModule <- importFrom "Tidy.Codegen.Monad" $ importValue "codegenModule"
+  fn_unsafePartial <- importFrom "Partial.Unsafe" $ importValue "unsafePartial"
+  fn_printModule <- importFrom "Tidy.Codegen" $ importValue "printModule"
+  fn_codegenModule <- importFrom "Tidy.Codegen.Monad" $ importValue "codegenModule"
 
-    generatedDoBlock <- codegenQuine genDoBlock
-      { imports: []
-      , identifiers: Map.empty
-      }
+  generatedDoBlock <- codegenQuine genDoBlock
+    { imports: []
+    , identifiers: Map.empty
+    }
 
-    tell
-      [ declSignature mainFnName $ ty_Effect `typeApp` [ prelude.ty_Unit ]
-      , declValue mainFnName [] do
-          exprWhere
-            ( exprApp fn_launchAff_
-                [ exprDo [] $
-                    exprApp fn_writeTextFile
-                      [ ctor_Utf8
-                      , exprString filePath
-                      , exprIdent generatedMod
-                      ]
+  tell
+    [ declSignature mainFnName $ ty_Effect `typeApp` [ prelude.ty_Unit ]
+    , declValue mainFnName [] do
+        exprWhere
+          ( exprApp fn_launchAff_
+              [ exprDo [] $
+                  exprApp fn_writeTextFile
+                    [ ctor_Utf8
+                    , exprString filePath
+                    , exprIdent generatedMod
+                    ]
+              ]
+          )
+          [ letValue generatedMod [] $
+              exprOp fn_printModule
+                [ prelude.op_dollar.binaryOp fn_unsafePartial
+                , prelude.op_dollar.binaryOp $ fn_codegenModule `exprApp`
+                    [ exprString $ maybe originalModuleName unwrap outModName
+                    , generatedDoBlock
+                    ]
                 ]
-            )
-            [ letValue generatedMod [] $
-                    exprOp fn_printModule
-                      [ prelude.op_dollar.binaryOp fn_unsafePartial
-                      , prelude.op_dollar.binaryOp $ fn_codegenModule `exprApp`
-                          [ exprString $ maybe originalModuleName unwrap outModName
-                          , generatedDoBlock
-                          ]
-                      ]
-            ]
-      ]
+          ]
+    ]
 
   where
   mainFnName = "main"
@@ -188,11 +192,11 @@ genModule filePath outModName (Module
       fn_declKeywordSignature <- liftCodegen
         $ importFrom "Tidy.Codegen"
         $ importValue
-        case preview (_SourceToken <<< _value <<< _TokLowerName <<< _2) keyword of
-          Just "data" -> "declDataSignature"
-          Just "newtype" -> "declNewtypeSignature"
-          Just "type" -> "declTypeSignature"
-          _ -> unsafeCrashWith "Invalid decl kind signature keyword"
+        $ case preview (_SourceToken <<< _value <<< _TokLowerName <<< _2) keyword of
+            Just "data" -> "declDataSignature"
+            Just "newtype" -> "declNewtypeSignature"
+            Just "type" -> "declTypeSignature"
+            _ -> unsafeCrashWith "Invalid decl kind signature keyword"
       generatedType <- genType value
       pure $ exprApp fn_declKeywordSignature
         [ exprString $ view (_NameVal <<< _Proper) label
@@ -271,8 +275,8 @@ genModule filePath outModName (Module
       ForeignValue lbld -> do
         -- declForeign "name" ty
         cg <- liftCodegen $ importFrom "Tidy.Codegen"
-            { declForeign: importValue "declForeign"
-            }
+          { declForeign: importValue "declForeign"
+          }
         let { label, value } = view _LabeledVals lbld
         generatedType <- genType value
         pure $ exprApp cg.declForeign
@@ -284,8 +288,8 @@ genModule filePath outModName (Module
       ForeignData _ lbld -> do
         -- declForeignData "name" ty
         cg <- liftCodegen $ importFrom "Tidy.Codegen"
-            { declForeignData: importValue "declForeignData"
-            }
+          { declForeignData: importValue "declForeignData"
+          }
         let { label, value } = view _LabeledVals lbld
         generatedType <- genType value
         pure $ exprApp cg.declForeignData
@@ -301,13 +305,13 @@ genModule filePath outModName (Module
     DeclRole _ _ name roles -> do
       -- declRole "name" roles
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-            { declRole: importValue "declRole"
-            }
+        { declRole: importValue "declRole"
+        }
       cst <- liftCodegen $ importFrom "PureScript.CST.Types"
-            { phantom: importCtor "Role" "Phantom"
-            , nominal: importCtor "Role" "Nominal"
-            , representational: importCtor "Role" "Representational"
-            }
+        { phantom: importCtor "Role" "Phantom"
+        , nominal: importCtor "Role" "Nominal"
+        , representational: importCtor "Role" "Representational"
+        }
       let
         genRole = case _ of
           Phantom -> cst.phantom
@@ -359,8 +363,8 @@ genModule filePath outModName (Module
     -- TypeVar (Name Ident)
     TypeVar nameIdent -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeVar: importValue "typeVar"
-          }
+        { typeVar: importValue "typeVar"
+        }
       pure $ exprApp cg.typeVar
         [ exprString $ view (_NameVal <<< _Ident) nameIdent ]
 
@@ -381,8 +385,8 @@ genModule filePath outModName (Module
     -- TypeString SourceToken String
     TypeString _ str -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeString: importValue "typeString"
-          }
+        { typeString: importValue "typeString"
+        }
       pure $ exprApp cg.typeString
         [ exprString str
         ]
@@ -391,8 +395,8 @@ genModule filePath outModName (Module
     TypeRow wrappedRow -> do
       -- typeRow [ Tuple "labelName" $ typeCtor "TypeName" ] $ Just (typeVar "r")
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeRow: importValue "typeRow"
-          }
+        { typeRow: importValue "typeRow"
+        }
       { lbls, mbTail } <- genWrappedRow wrappedRow
       pure $ exprApp cg.typeRow
         [ exprArray lbls
@@ -402,8 +406,8 @@ genModule filePath outModName (Module
     -- TypeRecord (Wrapped (Row e))
     TypeRecord wrappedRow -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeRecord: importValue "typeRecord"
-          }
+        { typeRecord: importValue "typeRecord"
+        }
       { lbls, mbTail } <- genWrappedRow wrappedRow
       pure $ exprApp cg.typeRecord
         [ exprArray lbls
@@ -414,8 +418,8 @@ genModule filePath outModName (Module
     TypeForall _ tyVars _ ty -> do
       -- typeForall tyvars ty
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeForall: importValue "typeForall"
-          }
+        { typeForall: importValue "typeForall"
+        }
       generatedTyVars <- traverse genTyVar tyVars
       generatedType <- genType ty
       pure $ exprApp cg.typeForall
@@ -427,8 +431,8 @@ genModule filePath outModName (Module
     TypeKinded ty _ kind -> do
       -- typeKinded ty kind
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeKinded: importValue "typeKinded"
-          }
+        { typeKinded: importValue "typeKinded"
+        }
       generatedType <- genType ty
       generatedKind <- genType kind
       pure $ exprApp cg.typeKinded
@@ -440,8 +444,8 @@ genModule filePath outModName (Module
     TypeApp ty args -> do
       -- typeApp ty args
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeApp: importValue "typeApp"
-          }
+        { typeApp: importValue "typeApp"
+        }
       generatedType <- genType ty
       generatedArgs <- traverse genType args
       pure $ exprApp cg.typeApp
@@ -463,8 +467,8 @@ genModule filePath outModName (Module
             , generatedNextType
             ]
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeOp: importValue "typeOp"
-          }
+        { typeOp: importValue "typeOp"
+        }
       pure $ exprApp cg.typeOp
         [ generatedType
         , exprArray $ NEA.toArray generatedBinOps
@@ -473,8 +477,8 @@ genModule filePath outModName (Module
     -- TypeOpName (QualifiedName Operator)
     TypeOpName qualOp -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeOpName: importValue "typeOpName"
-          }
+        { typeOpName: importValue "typeOpName"
+        }
       pure $ exprApp cg.typeOpName
         [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
         ]
@@ -482,8 +486,8 @@ genModule filePath outModName (Module
     -- TypeArrow (Type e) SourceToken (Type e)
     TypeArrow left _ right -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeArrow: importValue "typeArrow"
-          }
+        { typeArrow: importValue "typeArrow"
+        }
       -- Note: not sure if this is correct
       generatedLeft <- genType left
       generatedRight <- genType right
@@ -499,8 +503,8 @@ genModule filePath outModName (Module
     -- TypeConstrained (Type e) SourceToken (Type e)
     TypeConstrained args _ rest -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeConstrained: importValue "typeConstrained"
-          }
+        { typeConstrained: importValue "typeConstrained"
+        }
       -- Note: not sure if this is correct
       generatedArgs <- genType args
       generatedRest <- genType rest
@@ -512,8 +516,8 @@ genModule filePath outModName (Module
     -- TypeParens (Wrapped (Type e))
     TypeParens wrappedTy -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { typeParens: importValue "typeParens"
-          }
+        { typeParens: importValue "typeParens"
+        }
       generatedType <- genType $ viewOn wrappedTy (_WrappedVals)
       pure $ exprApp cg.typeParens [ generatedType ]
 
@@ -545,16 +549,17 @@ genModule filePath outModName (Module
 
   genFunDep :: Partial => ClassFundep -> Quine Void (Expr Void)
   genFunDep = const $ pure $ exprString "genFunDep Not yet implemented"
-    -- case _ of
-    --   FundepDetermined _ neaNameIdent ->
-    --   FundepDetermines from _ to ->
+
+  -- case _ of
+  --   FundepDetermined _ neaNameIdent ->
+  --   FundepDetermines from _ to ->
 
   genClassMember :: Partial => Labeled (Name Ident) (Type Void) -> Quine Void (Expr Void)
   genClassMember lbld = do
     let { label, value } = view _LabeledVals lbld
     cg <- liftCodegen $ importFrom "Tidy.Codegen"
-          { classMember: importValue "classMember"
-          }
+      { classMember: importValue "classMember"
+      }
     generatedType <- genType value
     pure $ exprApp cg.classMember
       [ exprString $ view (_NameVal <<< _Ident) label
@@ -606,8 +611,8 @@ genModule filePath outModName (Module
       InstanceBindingName { name, binders, guarded } -> do
         -- instValue name [ binderVar "a" ] $ exprString "foo"
         cg <- liftCodegen $ importFrom "Tidy.Codegen"
-            { instValue: importValue "instValue"
-            }
+          { instValue: importValue "instValue"
+          }
         generatedBinders <- traverse genBinder binders
         generatedGuard <- genGuarded guarded
         pure $ exprApp cg.instValue
@@ -687,8 +692,8 @@ genModule filePath outModName (Module
   genGuardedExprs :: Partial => NonEmptyArray (GuardedExpr Void) -> Quine Void (Expr Void)
   genGuardedExprs geArr = do
     cg <- liftCodegen $ importFrom "Tidy.Codegen"
-        { guardBranch: importValue "guardBranch"
-        }
+      { guardBranch: importValue "guardBranch"
+      }
     guards <- for geArr \guardedExpr -> do
       let r = viewOn guardedExpr _GuardedExprVal
       generatedPatterns <- traverse genPatternGuard r.patterns
@@ -725,7 +730,6 @@ genModule filePath outModName (Module
   genExpr :: Partial => Expr Void -> Quine Void (Expr Void)
   genExpr = case _ of
     _ -> pure $ exprString "Todo"
-
 
 genMaybe :: forall a. Partial => (Expr Void -> a -> Quine Void (Expr Void)) -> Maybe a -> Quine Void (Expr Void)
 genMaybe f = case _ of
