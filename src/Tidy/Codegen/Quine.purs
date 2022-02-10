@@ -406,7 +406,12 @@ genModule filePath outModName (Module
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
           { typeForall: importValue "typeForall"
           }
-      pure $ exprString "TypeForall not supported yet"
+      generatedTyVars <- traverse genTyVar tyVars
+      generatedType <- genType ty
+      pure $ exprApp cg.typeForall
+        [ exprArray $ NEA.toArray generatedTyVars
+        , generatedType
+        ]
 
     -- TypeKinded (Type e) SourceToken (Type e)
     TypeKinded ty _ kind -> do
