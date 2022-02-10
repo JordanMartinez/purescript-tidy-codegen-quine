@@ -35,17 +35,17 @@ genModule filePath outModName (Module
   }) = unsafePartial $ codegenModule (originalModuleName <> ".Generate") do
     importOpen "Prelude"
     prelude <- importFrom "Prelude"
-      { tyUnit: importType "Unit"
-      , opDollar: importOp "$"
+      { ty_Unit: importType "Unit"
+      , op_dollar: importOp "$"
       }
-    tyEffect <- importFrom "Effect" $ importType "Effect"
-    fnLaunchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
-    writeTextFile_ <- importFrom "Node.FS.Aff" $ importValue "writeTextFile"
-    ctorUtf8_ <- importFrom "Node.Encoding" $ importCtor "Encoding" "UTF8"
+    ty_Effect <- importFrom "Effect" $ importType "Effect"
+    fn_launchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
+    fn_writeTextFile <- importFrom "Node.FS.Aff" $ importValue "writeTextFile"
+    ctor_Utf8 <- importFrom "Node.Encoding" $ importCtor "Encoding" "UTF8"
 
-    unsafePartial_ <- importFrom "Partial.Unsafe" $ importValue "unsafePartial"
-    printModule_ <- importFrom "Tidy.Codegen" $ importValue "printModule"
-    codegenModule_ <- importFrom "Tidy.Codegen.Monad" $ importValue "codegenModule"
+    fn_unsafePartial <- importFrom "Partial.Unsafe" $ importValue "unsafePartial"
+    fn_printModule <- importFrom "Tidy.Codegen" $ importValue "printModule"
+    fn_codegenModule <- importFrom "Tidy.Codegen.Monad" $ importValue "codegenModule"
 
     generatedDoBlock <- codegenQuine genDoBlock
       { imports: []
@@ -55,22 +55,22 @@ genModule filePath outModName (Module
       }
 
     tell
-      [ declSignature mainFnName $ tyEffect `typeApp` [ prelude.tyUnit ]
+      [ declSignature mainFnName $ ty_Effect `typeApp` [ prelude.ty_Unit ]
       , declValue mainFnName [] do
           exprWhere
-            ( exprApp fnLaunchAff_
+            ( exprApp fn_launchAff_
                 [ exprDo [] $
-                    exprApp writeTextFile_
-                      [ ctorUtf8_
+                    exprApp fn_writeTextFile
+                      [ ctor_Utf8
                       , exprString filePath
                       , exprIdent generatedMod
                       ]
                 ]
             )
             [ letValue generatedMod [] $
-                    exprOp printModule_
-                      [ prelude.opDollar.binaryOp unsafePartial_
-                      , prelude.opDollar.binaryOp $ codegenModule_ `exprApp`
+                    exprOp fn_printModule
+                      [ prelude.op_dollar.binaryOp fn_unsafePartial
+                      , prelude.op_dollar.binaryOp $ fn_codegenModule `exprApp`
                           [ exprString $ maybe originalModuleName unwrap outModName
                           , generatedDoBlock
                           ]
