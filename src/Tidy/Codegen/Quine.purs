@@ -474,9 +474,13 @@ genModule filePath outModName (Module
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
           { typeArrow: importValue "typeArrow"
           }
+      -- Note: not sure if this is correct
+      generatedLeft <- genType left
+      generatedRight <- genType right
       pure $ exprApp cg.typeArrow
-        -- TODO: finish this implementation
-        []
+        [ exprArray [ generatedLeft ]
+        , generatedRight
+        ]
 
     -- TypeArrowName SourceToken
     TypeArrowName _ -> do
@@ -487,9 +491,13 @@ genModule filePath outModName (Module
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
           { typeConstrained: importValue "typeConstrained"
           }
+      -- Note: not sure if this is correct
+      generatedArgs <- genType args
+      generatedRest <- genType rest
       pure $ exprApp cg.typeConstrained
-        -- TODO: finish this implementation
-        []
+        [ exprArray [ generatedArgs ]
+        , generatedRest
+        ]
 
     -- TypeParens (Wrapped (Type e))
     TypeParens wrappedTy -> do
