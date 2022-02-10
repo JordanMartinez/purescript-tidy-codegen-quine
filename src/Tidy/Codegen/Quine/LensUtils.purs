@@ -8,7 +8,7 @@ import Data.Lens (Fold', Lens', _1, _2, _Just, folded, preview, previewOn, to, t
 import Data.Maybe (Maybe, maybe)
 import Data.Tuple (snd)
 import PureScript.CST.RecordLens (_header, _name, _value)
-import PureScript.CST.Types (Binder, DelimitedNonEmpty, Expr, GuardedExpr, Ident, Instance, InstanceBinding, Label, Labeled, LetBinding, Module, Name, OneOrDelimited(..), PatternGuard, Proper, QualifiedName, Row, Separated, Type, Where, Wrapped)
+import PureScript.CST.Types (Binder, DelimitedNonEmpty, Expr, GuardedExpr, Ident, Instance, InstanceBinding, Label, Labeled, LetBinding, Module, Name, OneOrDelimited(..), PatternGuard, Proper, QualifiedName, Row, Separated, Type, Where, Wrapped, Delimited)
 import PureScript.CST.Types.Lens (_GuardedExpr, _Instance, _Labeled, _Module, _ModuleHeader, _ModuleName, _Name, _PatternGuard, _QualifiedName, _Row, _Separated, _Where, _Wrapped)
 
 _ModuleNameFull :: forall e. Lens' (Module e) String
@@ -108,3 +108,6 @@ _PatternGuardVal = _PatternGuard <<< to \rec ->
   { binder: preview (_Just <<< _1) rec.binder
   , expr: rec.expr
   }
+
+_DelimitedVals :: forall r a. Monoid r => Fold' r (Delimited a) (Array a)
+_DelimitedVals = _WrappedVals <<< _Just <<< _SeparatedVals

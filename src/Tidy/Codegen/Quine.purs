@@ -5,24 +5,25 @@ import Prim hiding (Type, Row)
 
 import Control.Monad.State (get)
 import Control.Monad.Writer (tell)
-import Data.Array.NonEmpty as NEA
 import Data.Array.NonEmpty (NonEmptyArray)
+import Data.Array.NonEmpty as NEA
 import Data.Either (either)
+import Data.Int as Int
 import Data.Lens (_1, _Just, folded, preview, toArrayOf, toArrayOfOn, view, viewOn)
 import Data.Lens.Lens.Tuple (_2)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..), fromJust, isJust, maybe)
 import Data.Newtype (unwrap)
 import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
-import PureScript.CST.Types (Binder, ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident, Instance, InstanceBinding(..), Labeled, LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), PatternGuard, Role(..), Row, Type(..), TypeVarBinding(..), Where, Wrapped)
+import PureScript.CST.Types (Binder(..), ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident, Instance, InstanceBinding(..), IntValue(..), Labeled, LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), PatternGuard, RecordLabeled(..), Role(..), Row, Type(..), TypeVarBinding(..), Where, Wrapped)
 import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
-import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp)
+import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprBool, exprChar, exprDo, exprIdent, exprInt, exprIntHex, exprNumber, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
-import Tidy.Codegen.Quine.LensUtils (_GuardedExprVal, _InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _PatternGuardVal, _QualifiedNameVal, _RowVal, _SeparatedVals, _WhereVal, _WrappedVals)
-import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportType, liftCodegen)
+import Tidy.Codegen.Quine.LensUtils (_DelimitedVals, _GuardedExprVal, _InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _PatternGuardVal, _QualifiedNameVal, _RowVal, _SeparatedVals, _WhereVal, _WrappedVals)
+import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportCtor, doImportType, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
 genModule
@@ -623,8 +624,180 @@ genModule
 
   genBinder :: Partial => Binder Void -> Quine Void (Expr Void)
   genBinder = case _ of
-    _ ->
-      pure $ exprString "TODO"
+    -- BinderWildcard SourceToken
+    BinderWildcard _ -> do
+      liftCodegen $ importFrom "Tidy.Codegen" $ importValue "binderWildcard"
+
+    -- BinderVar (Name Ident)
+    BinderVar varName -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderVar: importValue "binderVar"
+        }
+      pure $ exprApp cg.binderVar
+        [ exprString $ viewOn varName (_NameVal <<< _Ident) ]
+
+    -- BinderNamed (Name Ident) SourceToken (Binder e)
+    BinderNamed name _ binder -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderNamed: importValue "binderNamed"
+        }
+      generatedBinder <- genBinder binder
+      pure $ exprApp cg.binderNamed
+        [ exprString $ viewOn name (_NameVal <<< _Ident)
+        , generatedBinder
+        ]
+
+    -- BinderConstructor (QualifiedName Proper) (Array (Binder e))
+    BinderConstructor ctor binders -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderCtor: importValue "binderCtor"
+        }
+      -- TODO: handle import and var name binding
+      ctorName <- doImportCtor "Some.Module" "Type" (viewOn ctor (_QualifiedNameVal (view _Proper))) "varName"
+      generatedBinders <- traverse genBinder binders
+      pure $ exprApp cg.binderCtor
+        [ ctorName
+        , exprArray generatedBinders
+        ]
+
+    -- BinderBoolean SourceToken Boolean
+    BinderBoolean _ bool -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderBool: importValue "binderBool"
+        }
+      pure $ exprApp cg.binderBool
+        [ exprBool bool ]
+
+    -- BinderChar SourceToken Char
+    BinderChar _ char -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderChar: importValue "binderChar"
+        }
+      pure $ exprApp cg.binderChar
+        [ exprChar char ]
+
+    -- BinderString SourceToken String
+    BinderString _ str -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderString: importValue "binderString"
+        }
+      pure $ exprApp cg.binderString
+        [ exprString str ]
+
+    -- BinderInt (Maybe SourceToken) SourceToken IntValue
+    BinderInt negSign _ iValue -> do
+      case iValue of
+        SmallInt i -> do
+          cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { binderInt: importValue "binderInt"
+            }
+          pure $ exprApp cg.binderInt
+            [ exprInt $ if isJust negSign then negate i else i ]
+        BigInt s -> do
+          cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { binderInt: importValue "binderInt"
+            }
+          let i = fromJust $ Int.fromString s
+          pure $ exprApp cg.binderInt
+            [ exprInt $ if isJust negSign then negate i else i ]
+        BigHex s -> do
+          cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { binderInt: importValue "binderInt"
+            }
+          let i = fromJust $ Int.fromString s
+          pure $ exprApp cg.binderInt
+            [ exprIntHex $ if isJust negSign then negate i else i ]
+
+    -- BinderNumber (Maybe SourceToken) SourceToken Number
+    BinderNumber negSign _ n -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderNumber: importValue "binderNumber"
+        }
+      pure $ exprApp cg.binderNumber
+        [ exprNumber $ if isJust negSign then negate n else n ]
+
+    -- BinderArray (Delimited (Binder e))
+    BinderArray delBinders -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderArray: importValue "binderArray"
+        }
+      generatedBinders <- traverse genBinder $ toArrayOfOn delBinders (_DelimitedVals <<< folded)
+      pure $ exprApp cg.binderArray
+        [ exprArray generatedBinders ]
+
+    -- BinderRecord (Delimited (RecordLabeled (Binder e)))
+    BinderRecord delRcdBinders -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderRecord: importValue "binderRecord"
+        }
+      generatedBinders <- traverse genRecordLabeledBinder $ toArrayOfOn delRcdBinders (_DelimitedVals <<< folded)
+      pure $ exprApp cg.binderRecord
+        [ exprArray generatedBinders ]
+
+    -- BinderParens (Wrapped (Binder e))
+    BinderParens wrappedBinder -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderParens: importValue "binderParens"
+        }
+      generatedBinder <- genBinder $ viewOn wrappedBinder _WrappedVals
+      pure $ exprApp cg.binderParens
+        [ generatedBinder ]
+
+    -- BinderTyped (Binder e) SourceToken (Type e)
+    BinderTyped binder _ ty -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderTyped: importValue "binderTyped"
+        }
+      generatedBinder <- genBinder binder
+      generatedType <- genType ty
+      pure $ exprApp cg.binderTyped
+        [ generatedBinder
+        , generatedType
+        ]
+
+    -- BinderOp (Binder e) (NonEmptyArray (Tuple (QualifiedName Operator) (Binder e)))
+    BinderOp binder binderOps -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderOp: importValue "binderOp"
+        , binaryOp: importValue "binaryOp"
+        }
+      generatedBinder <- genBinder binder
+      generatedBinderOps <- for binderOps \(Tuple qualOp b) -> do
+        generatedB <- genBinder b
+        pure $ exprApp cg.binaryOp
+          [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
+          , generatedB
+          ]
+      pure $ exprApp cg.binderOp
+        [ generatedBinder
+        , exprArray $ NEA.toArray generatedBinderOps
+        ]
+
+    BinderError e ->
+      absurd e
+
+  genRecordLabeledBinder :: Partial => RecordLabeled (Binder Void) -> Quine Void (Expr Void)
+  genRecordLabeledBinder = case _ of
+    -- RecordPun (Name Ident)
+    RecordPun varName -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderVar: importValue "binderVar"
+        }
+      -- TODO: ask Nate if this is correct
+      pure $ exprApp cg.binderVar
+        [ exprString $ viewOn varName (_NameVal <<< _Ident) ]
+
+    -- RecordField (Name Label) SourceToken a
+    RecordField varName _ binder -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { binderNamed: importValue "binderNamed"
+        }
+      generatedBinder <- genBinder binder
+      -- TODO: ask Nate if this is correct
+      pure $ exprApp cg.binderNamed
+        [ exprString $ viewOn varName (_NameVal <<< _Label)
+        , generatedBinder
+        ]
 
   genGuarded :: Partial => Guarded Void -> Quine Void (Expr Void)
   genGuarded = case _ of

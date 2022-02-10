@@ -170,16 +170,15 @@ doImportClass modName opName varName = do
   pure bvar
 
 -- | varName <- importFrom "ModName" $ importCtor "TypeName" "ConstructorName"
-doImportCtor :: forall e m. Partial => Monad m => String -> String -> String -> String -> QuineT e m (Binder e)
+doImportCtor :: forall e m. Partial => Monad m => String -> String -> String -> String -> QuineT e m (Expr e)
 doImportCtor modName tyName ctorName varName = do
   cg <- liftCodegen $ importFrom "Tidy.Codegen.Monad"
     { importFrom: importValue "importFrom"
     , importCtor: importValue "importCtor"
     }
   dollar <- liftCodegen $ importFrom "Prelude" $ importOp "$"
-  let bvar = binderVar varName
-  appendImport $ doBind bvar $
+  appendImport $ doBind (binderVar varName) $
     exprOp (exprApp cg.importFrom [ exprString modName ])
       [ dollar.binaryOp $ exprApp cg.importCtor [ exprString tyName, exprString ctorName ]
       ]
-  pure bvar
+  pure $ exprIdent varName
