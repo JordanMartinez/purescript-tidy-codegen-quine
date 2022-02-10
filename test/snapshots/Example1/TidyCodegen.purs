@@ -16,4 +16,5 @@ main = launchAff_ do
     "/home/jordan/Programming/Projects/tidy-codegen-quine/test/snapshots/Example1/Generated.purs"
     generatedMod
   where
-  generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1" do pure unit
+  generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1.Generated" do
+    pure unit
