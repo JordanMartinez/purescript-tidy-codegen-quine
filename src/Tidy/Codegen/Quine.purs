@@ -5,6 +5,7 @@ import Prim hiding (Type, Row)
 
 import Control.Monad.State (get)
 import Control.Monad.Writer (tell)
+import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Either (either)
@@ -831,15 +832,20 @@ genModule
   genWhere :: Partial => Where Void -> Quine Void (Expr Void)
   genWhere wher = do
     let { expr, bindings } = viewOn wher _WhereVal
-    cg <- liftCodegen $ importFrom "Tidy.Codegen"
-      { exprWhere: importValue "exprWhere"
-      }
     generatedExpr <- genExpr expr
-    generatedLetBinds <- genLetBindings bindings
-    pure $ exprApp cg.exprWhere
-      [ generatedExpr
-      , exprArray generatedLetBinds
-      ]
+    if Array.null bindings then do
+      -- minor optimization. Outputs `someExpr`
+      -- rather than `exprWhere (someExpr) []`.
+      pure generatedExpr
+    else do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprWhere: importValue "exprWhere"
+        }
+      generatedLetBinds <- genLetBindings bindings
+      pure $ exprApp cg.exprWhere
+        [ generatedExpr
+        , exprArray generatedLetBinds
+        ]
 
   genLetBindings :: Partial => Array (LetBinding Void) -> Quine Void (Array (Expr Void))
   genLetBindings binds = do
