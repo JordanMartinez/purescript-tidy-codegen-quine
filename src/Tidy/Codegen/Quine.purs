@@ -9,7 +9,7 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Either (either)
 import Data.Int as Int
-import Data.Lens (_1, _Just, folded, preview, toArrayOf, toArrayOfOn, view, viewOn)
+import Data.Lens (_1, _Just, folded, preview, to, toArrayOf, toArrayOfOn, view, viewOn)
 import Data.Lens.Lens.Tuple (_2)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, isJust, maybe)
@@ -18,11 +18,11 @@ import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
-import PureScript.CST.Types (Binder(..), ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident, Instance, InstanceBinding(..), IntValue(..), Labeled, LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), PatternGuard, RecordLabeled(..), Role(..), Row, Type(..), TypeVarBinding(..), Where, Wrapped)
+import PureScript.CST.Types (Binder(..), ClassFundep, DataCtor(..), Declaration(..), DoStatement(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident, Instance, InstanceBinding(..), IntValue(..), Labeled, LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), PatternGuard, RecordLabeled(..), RecordUpdate(..), Role(..), Row, Type(..), TypeVarBinding(..), Where, Wrapped)
 import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
 import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprBool, exprChar, exprDo, exprIdent, exprInt, exprIntHex, exprNumber, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
-import Tidy.Codegen.Quine.LensUtils (_DelimitedVals, _GuardedExprVal, _InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _PatternGuardVal, _QualifiedNameVal, _RowVal, _SeparatedVals, _WhereVal, _WrappedVals)
+import Tidy.Codegen.Quine.LensUtils (_DelimitedNonEmptyVals, _DelimitedVals, _GuardedExprVal, _InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _PatternGuardVal, _QualifiedNameVal, _RowVal, _SeparatedVals, _WhereVal, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportCtor, doImportType, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
@@ -799,6 +799,28 @@ genModule
         , generatedBinder
         ]
 
+  genRecordLabeledExpr :: Partial => RecordLabeled (Expr Void) -> Quine Void (Expr Void)
+  genRecordLabeledExpr = case _ of
+    -- RecordPun (Name Ident)
+    RecordPun varName -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprIdent: importValue "exprIdent"
+        }
+      -- TODO: ask Nate if this is correct
+      pure $ exprApp cg.exprIdent
+        [ exprString $ viewOn varName (_NameVal <<< _Ident) ]
+
+    -- RecordField (Name Label) SourceToken a
+    RecordField varName _ expr -> do
+      tuple <- liftCodegen $ importFrom "Data.Tuple"
+        { ctor: importCtor "Tuple" "Tuple"
+        }
+      generatedExpr <- genExpr expr
+      pure $ exprApp tuple.ctor
+        [ exprString $ viewOn varName (_NameVal <<< _Label)
+        , generatedExpr
+        ]
+
   genGuarded :: Partial => Guarded Void -> Quine Void (Expr Void)
   genGuarded = case _ of
     Unconditional _ wher -> do
@@ -867,15 +889,18 @@ genModule
     cg <- liftCodegen $ importFrom "Tidy.Codegen"
       { guardBranch: importValue "guardBranch"
       }
-    guards <- for geArr \guardedExpr -> do
-      let r = viewOn guardedExpr _GuardedExprVal
-      generatedPatterns <- traverse genPatternGuard r.patterns
-      generatedWhere <- genWhere r.where
-      pure $ exprApp cg.guardBranch
-        [ exprArray generatedPatterns
-        , generatedWhere
-        ]
+    guards <- traverse (genGuardedExpr cg) geArr
     pure $ exprArray $ NEA.toArray guards
+
+  genGuardedExpr :: forall r. Partial => { guardBranch :: Expr Void | r } -> GuardedExpr Void -> Quine Void (Expr Void)
+  genGuardedExpr cg guardedExpr = do
+    let r = viewOn guardedExpr _GuardedExprVal
+    generatedPatterns <- traverse genPatternGuard r.patterns
+    generatedWhere <- genWhere r.where
+    pure $ exprApp cg.guardBranch
+      [ exprArray generatedPatterns
+      , generatedWhere
+      ]
 
   genPatternGuard :: Partial => PatternGuard Void -> Quine Void (Expr Void)
   genPatternGuard pGuard = do
@@ -901,7 +926,361 @@ genModule
 
   genExpr :: Partial => Expr Void -> Quine Void (Expr Void)
   genExpr = case _ of
-    _ -> pure $ exprString "Todo"
+    -- ExprHole (Name Ident)
+    ExprHole holeName -> do
+      pure $ exprString "Tidy codegen not support expr hole"
+
+    -- ExprSection SourceToken
+    ExprSection _ -> do
+      liftCodegen $ importFrom "Tidy.Codegen" $ importValue "exprSection"
+
+    -- ExprIdent (QualifiedName Ident)
+    ExprIdent qualIdent -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprIdent: importValue "exprIdent"
+        }
+      pure $ exprApp cg.exprIdent
+        [ exprString $ viewOn qualIdent (_QualifiedNameVal (view _Ident)) ]
+
+    -- ExprConstructor (QualifiedName Proper)
+    ExprConstructor qualProp -> do
+      -- TODO: handle import logic here
+      doImportCtor "Module" "Type" (viewOn qualProp (_QualifiedNameVal (view _Proper))) "varName"
+
+    -- ExprBoolean SourceToken Boolean
+    ExprBoolean _ bool -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprBool: importValue "exprBool"
+        }
+      pure $ exprApp cg.exprBool
+        [ exprBool bool ]
+
+    -- ExprChar SourceToken Char
+    ExprChar _ char -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprChar: importValue "exprChar"
+        }
+      pure $ exprApp cg.exprChar
+        [ exprChar char ]
+
+    -- ExprString SourceToken String
+    ExprString _ str -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprString: importValue "exprString"
+        }
+      pure $ exprApp cg.exprString
+        [ exprString str ]
+
+    -- ExprInt SourceToken IntValue
+    ExprInt _ iValue -> do
+      case iValue of
+        SmallInt i -> do
+          cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { exprInt: importValue "exprInt"
+            }
+          pure $ exprApp cg.exprInt
+            [ exprInt i ]
+        BigInt s -> do
+          cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { exprInt: importValue "exprInt"
+            }
+          let i = fromJust $ Int.fromString s
+          pure $ exprApp cg.exprInt
+            [ exprInt i ]
+        BigHex s -> do
+          cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { exprIntHex: importValue "exprIntHex"
+            }
+          let i = fromJust $ Int.fromString s
+          pure $ exprApp cg.exprIntHex
+            [ exprIntHex i ]
+
+    -- ExprNumber SourceToken Number
+    ExprNumber _ n -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprNumber: importValue "exprNumber"
+        }
+      pure $ exprApp cg.exprNumber
+        [ exprNumber n ]
+
+    -- ExprArray (Delimited (Expr e))
+    ExprArray delExprs -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprArray: importValue "exprArray"
+        }
+      generatedExprs <- traverse genExpr $ toArrayOfOn delExprs (_DelimitedVals <<< folded)
+      pure $ exprApp cg.exprArray
+        [ exprArray generatedExprs ]
+
+    -- ExprRecord (Delimited (RecordLabeled (Expr e)))
+    ExprRecord delRcdExprs -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprRecord: importValue "exprRecord"
+        }
+      generatedFields <- traverse genRecordLabeledExpr $ toArrayOfOn delRcdExprs (_DelimitedVals <<< folded)
+      pure $ exprApp cg.exprRecord
+        [ exprArray generatedFields ]
+
+    -- ExprParens (Wrapped (Expr e))
+    ExprParens wrappedExpr -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprParens: importValue "exprParens"
+        }
+      generatedExpr <- genExpr $ viewOn wrappedExpr _WrappedVals
+      pure $ exprApp cg.exprParens
+        [ generatedExpr ]
+
+    -- ExprTyped (Expr e) SourceToken (Type e)
+    ExprTyped expr _ ty -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprTyped: importValue "exprTyped"
+        }
+      generatedExpr <- genExpr expr
+      generatedType <- genType ty
+      pure $ exprApp cg.exprTyped
+        [ generatedExpr
+        , generatedType
+        ]
+
+    -- ExprInfix (Expr e) (NonEmptyArray (Tuple (Wrapped (Expr e)) (Expr e)))
+    ExprInfix expr infixExprs -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprInfix: importValue "exprInfix"
+        }
+      generatedExpr <- genExpr expr
+      generatedInfixExprs <- do
+        tuple <- liftCodegen $ importFrom "Data.Tuple"
+          { ctor: importCtor "Tuple" "Tuple"
+          }
+        for infixExprs \(Tuple wrappedExpr nextExpr) -> do
+          leftExpr <- genExpr $ viewOn wrappedExpr _WrappedVals
+          rightExpr <- genExpr nextExpr
+          pure $ exprApp tuple.ctor
+            [ leftExpr
+            , rightExpr
+            ]
+      pure $ exprApp cg.exprInfix
+        [ generatedExpr
+        , exprArray $ NEA.toArray generatedInfixExprs
+        ]
+
+    -- ExprOp (Expr e) (NonEmptyArray (Tuple (QualifiedName Operator) (Expr e)))
+    ExprOp expr binOps -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprOp: importValue "exprOp"
+        , binaryOp: importValue "binaryOp"
+        }
+      generatedExpr <- genExpr expr
+      generatedInfixExprs <- for binOps \(Tuple qualOp nextExpr) -> do
+        generatedNextExpr <- genExpr nextExpr
+        pure $ exprApp cg.binaryOp
+          [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
+          , generatedNextExpr
+          ]
+      pure $ exprApp cg.exprOp
+        [ generatedExpr
+        , exprArray $ NEA.toArray generatedInfixExprs
+        ]
+
+    -- ExprOpName (QualifiedName Operator)
+    ExprOpName qualOp -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprOpName: importValue "exprOpName"
+        }
+      pure $ exprApp cg.exprOpName
+        [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator)) ]
+
+    -- ExprNegate SourceToken (Expr e)
+    ExprNegate _ expr -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprNegate: importValue "exprNegate"
+        }
+      generatedExpr <- genExpr expr
+      pure $ exprApp cg.exprNegate
+        [ generatedExpr ]
+
+    -- ExprRecordAccessor (RecordAccessor e)
+    ExprRecordAccessor { expr, path } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprDot: importValue "exprDot"
+        }
+      generatedExpr <- genExpr expr
+      let generatedPath = toArrayOfOn path (_SeparatedVals <<< folded <<< _NameVal <<< _Label <<< to exprString)
+      pure $ exprApp cg.exprDot
+        [ generatedExpr
+        , exprArray generatedPath
+        ]
+
+    -- ExprRecordUpdate (Expr e) (DelimitedNonEmpty (RecordUpdate e))
+    ExprRecordUpdate expr delNeRcdUpd -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprUpdate: importValue "exprUpdate"
+        }
+      generatedExpr <- genExpr expr
+      generatedUpdates <- traverse genRecordUpdate $ toArrayOfOn delNeRcdUpd (_DelimitedNonEmptyVals <<< folded)
+      pure $ exprApp cg.exprUpdate
+        [ generatedExpr
+        , exprArray generatedUpdates
+        ]
+
+    -- ExprApp (Expr e) (NonEmptyArray (Expr e))
+    ExprApp f args -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprApp: importValue "exprApp"
+        }
+      generatedFn <- genExpr f
+      generatedArgs <- traverse genExpr args
+      pure $ exprApp cg.exprApp
+        [ generatedFn
+        , exprArray $ NEA.toArray generatedArgs
+        ]
+
+    -- ExprLambda (Lambda e)
+    ExprLambda { binders, body } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprLambda: importValue "exprLambda"
+        }
+      generatedBinders <- traverse genBinder binders
+      generatedBody <- genExpr body
+      pure $ exprApp cg.exprLambda
+        [ exprArray $ NEA.toArray generatedBinders
+        , generatedBody
+        ]
+
+    -- ExprIf (IfThenElse e)
+    ExprIf ite -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprIf: importValue "exprIf"
+        }
+      generatedCond <- genExpr ite.cond
+      generatedTrue <- genExpr ite.true
+      generatedFalse <- genExpr ite.false
+      pure $ exprApp cg.exprIf
+        [ generatedCond
+        , generatedTrue
+        , generatedFalse
+        ]
+
+    -- ExprCase (CaseOf e)
+    ExprCase { head, branches } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprCase: importValue "exprCase"
+        , caseBranch: importValue "caseBranch"
+        , guardBranch: importValue "guardBranch"
+        }
+      generatedHead <- traverse genExpr $ toArrayOfOn head (_SeparatedVals <<< folded)
+      generatedBranches <- for branches \(Tuple sepBinders guardedExpr) -> do
+        generatedBinders <- traverse genBinder $ toArrayOfOn sepBinders (_SeparatedVals <<< folded)
+        generatedGuard <- genGuarded guardedExpr
+        pure $ exprApp cg.caseBranch
+          [ exprArray generatedBinders
+          , generatedGuard
+          ]
+      pure $ exprApp cg.exprCase
+        [ exprArray generatedHead
+        , exprArray $ NEA.toArray generatedBranches
+        ]
+
+    -- ExprLet (LetIn e)
+    ExprLet { bindings, body } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprLet: importValue "exprLet"
+        , letBinder: importValue "letBinder"
+        }
+      generatedBindings <- genLetBindings $ NEA.toArray bindings
+      generatedBody <- genExpr body
+      pure $ exprApp cg.exprLet
+        [ exprArray generatedBindings
+        , generatedBody
+        ]
+
+    -- ExprDo (DoBlock e)
+    ExprDo { statements } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprDo: importValue "exprDo"
+        }
+      generatedStatements <- traverse genDoStatement statements
+      let { init, last } = NEA.unsnoc generatedStatements
+      pure $ exprApp cg.exprDo
+        [ exprArray init
+        , last
+        ]
+
+    -- ExprAdo (AdoBlock e)
+    ExprAdo { statements, result } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { exprAdo: importValue "exprAdo"
+        }
+      generatedStatements <- traverse genDoStatement statements
+      generatedResult <- genExpr result
+      pure $ exprApp cg.exprAdo
+        [ exprArray generatedStatements
+        , generatedResult
+        ]
+
+    ExprError e ->
+      absurd e
+
+  genRecordUpdate :: Partial => RecordUpdate Void -> Quine Void (Expr Void)
+  genRecordUpdate = case _ of
+    -- RecordUpdateLeaf (Name Label) SourceToken (Expr e)
+    RecordUpdateLeaf lblName _ expr -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { update: importValue "update"
+        }
+      generatedExpr <- genExpr expr
+      pure $ exprApp cg.update
+        [ exprString $ viewOn lblName (_NameVal <<< _Label)
+        , generatedExpr
+        ]
+
+    -- RecordUpdateBranch (Name Label) (DelimitedNonEmpty (RecordUpdate e))
+    RecordUpdateBranch lblName nestedUpdates -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { updateNested: importValue "updateNested"
+        }
+      generatedUpdates <- traverse genRecordUpdate $ toArrayOfOn nestedUpdates (_DelimitedNonEmptyVals <<< folded)
+      pure $ exprApp cg.updateNested
+        [ exprString $ viewOn lblName (_NameVal <<< _Label)
+        , exprArray generatedUpdates
+        ]
+
+  genDoStatement :: Partial => DoStatement Void -> Quine Void (Expr Void)
+  genDoStatement = case _ of
+    -- DoLet SourceToken (NonEmptyArray (LetBinding e))
+    DoLet _ letBindings -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { doLet: importValue "doLet"
+        }
+      generatedLetBinds <- genLetBindings $ NEA.toArray letBindings
+      pure $ exprApp cg.doLet
+        [ exprArray generatedLetBinds
+        ]
+
+    -- DoDiscard (Expr e)
+    DoDiscard expr -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { doDiscard: importValue "doDiscard"
+        }
+      generatedExpr <- genExpr expr
+      pure $ exprApp cg.doDiscard
+        [ generatedExpr
+        ]
+
+    -- DoBind (Binder e) SourceToken (Expr e)
+    DoBind binder _ expr -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { doBind: importValue "doBind"
+        }
+      generatedBinder <- genBinder binder
+      generatedExpr <- genExpr expr
+      pure $ exprApp cg.doBind
+        [ generatedBinder
+        , generatedExpr
+        ]
+
+    DoError e ->
+      absurd e
 
 genMaybe :: forall a. Partial => (Expr Void -> a -> Quine Void (Expr Void)) -> Maybe a -> Quine Void (Expr Void)
 genMaybe f = case _ of
