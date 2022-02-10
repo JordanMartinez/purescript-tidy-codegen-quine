@@ -13,9 +13,9 @@ import Tidy.Codegen.Monad (codegenModule, importFrom, importOpen, importType, im
 
 main :: Effect Unit
 main = launchAff_ do
-  writeTextFile UTF8 "src/Tidy/Codegen/Quine/Generate.purs" generatedMod
+  writeTextFile UTF8 "test/snapshots/Example1/TidyCodegen.purs" generatedMod
   where
-  generatedMod = printModule $ unsafePartial $ codegenModule "Tidy.Codegen.Quine" do
+  generatedMod = printModule $ unsafePartial $ codegenModule "Test.Snapshots.Example1.Generated" do
     importOpen "Prelude"
     ty_Effect <- importFrom "Effect" $ importType "Effect"
     fn_launchAff_ <- importFrom "Effect.Aff" $ importValue "launchAff_"
