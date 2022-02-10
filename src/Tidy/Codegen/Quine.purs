@@ -16,11 +16,11 @@ import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
-import PureScript.CST.Types (ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Ident, Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Row, Type(..), TypeVarBinding(..), Wrapped)
+import PureScript.CST.Types (Binder, ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Guarded(..), Ident, Instance, InstanceBinding(..), Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Row, Type(..), TypeVarBinding(..), Wrapped)
 import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
 import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
-import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _RowVal, _SeparatedVals, _WrappedVals)
+import Tidy.Codegen.Quine.LensUtils (_InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _RowVal, _SeparatedVals, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportType, liftCodegen)
 
 genModule :: String -> Maybe ModuleName -> Module Void -> Module Void
@@ -153,7 +153,14 @@ genModule filePath outModName (Module
         ]
 
     -- DeclInstanceChain (Separated (Instance e))
-    -- DeclInstanceChain sep -> do
+    DeclInstanceChain sep -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { declInstanceChain: importValue "declInstanceChain"
+        }
+      generatedInstances <- genDeclInstances $ toArrayOfOn sep (_SeparatedVals <<< folded)
+      pure $ exprApp cg.declInstanceChain
+        [ exprArray generatedInstances
+        ]
 
     -- DeclDerive SourceToken (Maybe SourceToken) (InstanceHead e)
     DeclDerive _ _ { name, constraints, className, types } -> do
@@ -551,3 +558,77 @@ genModule filePath outModName (Module
       [ exprString $ view (_NameVal <<< _Ident) label
       , generatedType
       ]
+
+  -- { head :: InstanceHead e
+  -- , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding e)))
+  -- }
+  genDeclInstances :: Partial => Array (Instance Void) -> Quine Void (Array (Expr Void))
+  genDeclInstances instances = do
+    cg <- liftCodegen $ importFrom "Tidy.Codegen"
+      { declInstance: importValue "declInstance"
+      }
+    -- declInstance mbName mbConstraints className tyCtors [ instValues ]
+    for instances \inst -> do
+      let { head, body } = view _InstanceVal inst
+      mbName <- genMaybe (\just val -> exprApp just [ exprString $ viewOn val (_NameVal <<< _Ident) ]) head.name
+      generatedConstraints <- traverse genType head.constraints
+      generatedTypes <- traverse genType head.types
+      generatedInstances <- genInstVals body
+      pure $ exprApp cg.declInstance
+        [ mbName
+        , exprArray generatedConstraints
+        , exprString $ viewOn head.className (_QualifiedNameVal (view _Proper))
+        , exprArray generatedTypes
+        , exprArray generatedInstances
+        ]
+
+  genInstVals :: Partial => Array (InstanceBinding Void) -> Quine Void (Array (Expr Void))
+  genInstVals instArrs = do
+    for instArrs case _ of
+      -- InstanceBindingSignature (Labeled (Name Ident) (Type e))
+      InstanceBindingSignature lbld -> do
+        -- instSignature "name" ty
+        let { label, value } = view _LabeledVals lbld
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { instSignature: importValue "instSignature"
+          }
+        generatedType <- genType value
+        pure $ exprApp cg.instSignature
+          [ exprString $ viewOn label (_NameVal <<< _Ident)
+          , generatedType
+          ]
+
+      -- InstanceBindingName (ValueBindingFields e)
+      InstanceBindingName { name, binders, guarded } -> do
+        -- instValue name [ binderVar "a" ] $ exprString "foo"
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+            { instValue: importValue "instValue"
+            }
+        generatedBinders <- genBinders binders
+        generatedGuard <- genGuarded guarded
+        pure $ exprApp cg.instValue
+          [ exprString $ viewOn name (_NameVal <<< _Ident)
+          , exprArray generatedBinders
+          , generatedGuard
+          ]
+
+  genBinders :: Partial => Array (Binder Void) -> Quine Void (Array (Expr Void))
+  genBinders binders = do
+    for binders \_ ->
+      pure $ exprString "TODO"
+
+  genGuarded :: Partial => Guarded Void -> Quine Void (Expr Void)
+  genGuarded = case _ of
+    Unconditional _ wher ->
+      pure $ exprString "TODO"
+    Guarded guardExprArr -> do
+      pure $ exprString "TODO"
+
+
+genMaybe :: forall a. Partial => (Expr Void -> a -> Expr Void) -> Maybe a -> Quine Void (Expr Void)
+genMaybe f = case _ of
+  Nothing -> do
+    liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Nothing"
+  Just val -> do
+    ctor_Just <- liftCodegen $ importFrom "Data.Maybe" $ importCtor "Maybe" "Just"
+    pure $ f ctor_Just val

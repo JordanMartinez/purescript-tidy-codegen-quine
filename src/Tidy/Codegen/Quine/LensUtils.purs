@@ -4,12 +4,12 @@ import Prelude
 import Prim hiding (Type, Row)
 
 import Data.Array as Array
-import Data.Lens (Fold', Lens', _2, _Just, folded, preview, previewOn, to, toArrayOf, toArrayOfOn)
+import Data.Lens (Fold', Lens', _1, _2, _Just, folded, preview, previewOn, to, toArrayOf, toArrayOfOn)
 import Data.Maybe (Maybe, maybe)
 import Data.Tuple (snd)
 import PureScript.CST.RecordLens (_header, _name, _value)
-import PureScript.CST.Types (DelimitedNonEmpty, Label, Labeled, Module, Name, OneOrDelimited(..), QualifiedName, Row, Separated, Type, Wrapped)
-import PureScript.CST.Types.Lens (_Labeled, _Module, _ModuleHeader, _ModuleName, _Name, _QualifiedName, _Row, _Separated, _Wrapped)
+import PureScript.CST.Types (DelimitedNonEmpty, Ident, Instance, InstanceBinding, Label, Labeled, Module, Name, OneOrDelimited(..), Proper, QualifiedName, Row, Separated, Type, Wrapped)
+import PureScript.CST.Types.Lens (_Instance, _Labeled, _Module, _ModuleHeader, _ModuleName, _Name, _QualifiedName, _Row, _Separated, _Wrapped)
 
 _ModuleNameFull :: forall e. Lens' (Module e) String
 _ModuleNameFull = _Module <<< _header <<< _ModuleHeader <<< _name <<< _NameVal <<< _ModuleName
@@ -45,4 +45,27 @@ _RowVal :: forall e r. Fold' r (Row e) { labels :: Array { label :: Name Label, 
 _RowVal = _Row <<< to \rec ->
   { labels: toArrayOfOn rec.labels (_Just <<< _SeparatedVals <<< folded <<< _LabeledVals)
   , tail: previewOn rec.tail (_Just <<< _2)
+  }
+
+_InstanceVal
+  :: forall e r
+   . Fold'
+      r
+      (Instance e)
+      { head ::
+          { name :: Maybe (Name Ident)
+          , constraints :: Array (Type e)
+          , className :: QualifiedName Proper
+          , types :: Array (Type e)
+          }
+      , body :: Array (InstanceBinding e)
+      }
+_InstanceVal = _Instance <<< to \{ head, body } ->
+  { head:
+      { name: previewOn head.name (_Just <<< _1)
+      , constraints: toArrayOfOn head.constraints (_Just <<< _1 <<< _OneOrDelimitedVals <<< folded)
+      , className: head.className
+      , types: head.types
+      }
+  , body: toArrayOfOn body (_Just <<< _2 <<< folded)
   }
