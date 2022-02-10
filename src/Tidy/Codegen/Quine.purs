@@ -10,7 +10,7 @@ import Data.Either (either)
 import Data.Lens (_1, _Just, folded, preview, toArrayOf, toArrayOfOn, view, viewOn)
 import Data.Lens.Lens.Tuple (_2)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isNothing, maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (unwrap)
 import Data.Traversable (for, traverse)
 import Data.Tuple (Tuple(..), snd)
@@ -18,7 +18,7 @@ import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
 import PureScript.CST.Types (ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Ident, Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Row, Type(..), TypeVarBinding(..), Wrapped)
 import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
-import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp, typeRowEmpty)
+import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
 import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _RowVal, _SeparatedVals, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportType, liftCodegen)
@@ -48,9 +48,7 @@ genModule filePath outModName (Module
 
     generatedDoBlock <- codegenQuine genDoBlock
       { imports: []
-      , declarations: []
       , identifiers: Map.empty
-      , exportsAllMembers: isNothing originalExports
       }
 
     tell

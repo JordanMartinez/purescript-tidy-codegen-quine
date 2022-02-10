@@ -7,16 +7,14 @@ import Control.Monad.State (class MonadState, StateT(..), modify_, runStateT)
 import Data.Array as Array
 import Data.Identity (Identity)
 import Data.Map (Map)
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), fst)
 import PureScript.CST.Types (Binder, DoStatement, Expr)
-import Tidy.Codegen (binderVar, doBind, doDiscard, exprApp, exprDo, exprIdent, exprOp, exprString)
+import Tidy.Codegen (binderVar, doBind, doDiscard, exprApp, exprIdent, exprOp, exprString)
 import Tidy.Codegen.Monad (CodegenT, importFrom, importOp, importValue)
 
 type QuineState e m =
   { imports :: Array (DoStatement e)
-  , declarations :: Array (DoStatement e)
   , identifiers :: Map String (Map Int (CodegenT e m Unit))
-  , exportsAllMembers :: Boolean
   }
 
 newtype QuineT e m a = QuineT (StateT (QuineState e m) (CodegenT e m) a)
@@ -27,9 +25,7 @@ runQuineT :: forall e m a. QuineT e m a -> StateT (QuineState e m) (CodegenT e m
 runQuineT (QuineT ma) = ma
 
 codegenQuine :: forall e m. Monad m => QuineT e m (Expr e) -> QuineState e m -> CodegenT e m (Expr e)
-codegenQuine q s = do
-  Tuple lastExpr { imports, declarations } <- runStateT (runQuineT q) s
-  pure $ exprDo (imports <> declarations) lastExpr
+codegenQuine q s = map fst $ runStateT (runQuineT q) s
 
 liftCodegen :: forall e m a. Monad m => CodegenT e m a -> QuineT e m a
 liftCodegen ma = QuineT $ StateT \s -> map (flip Tuple s) ma
