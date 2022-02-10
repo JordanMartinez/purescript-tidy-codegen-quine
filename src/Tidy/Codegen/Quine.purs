@@ -7,19 +7,19 @@ import Control.Monad.Writer (tell)
 import Data.Array.NonEmpty as NEA
 import Data.Either (either)
 import Data.Foldable (for_)
-import Data.Lens (_1, _Just, folded, preview, to, toArrayOf, toArrayOfOn, view, viewOn)
+import Data.Lens (_1, _Just, folded, preview, toArrayOf, toArrayOfOn, view, viewOn)
 import Data.Lens.Lens.Tuple (_2)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isNothing, maybe)
+import Data.Maybe (Maybe(..), isNothing)
 import Data.Traversable (for, traverse)
-import Data.Tuple (snd)
+import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
-import PureScript.CST.Types (ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Ident, Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Type, TypeVarBinding(..))
-import PureScript.CST.Types.Lens (_Ident, _ModuleName, _Operator, _Proper, _QualifiedName, _SourceToken, _TokLowerName)
+import PureScript.CST.Types (ClassFundep, DataCtor(..), Declaration(..), Expr, Fixity(..), FixityOp(..), Foreign(..), Ident, Labeled, Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), Role(..), Type(..), TypeVarBinding(..))
+import PureScript.CST.Types.Lens (_Ident, _Operator, _Proper, _SourceToken, _TokLowerName)
 import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprDo, exprIdent, exprInt, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
-import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _SeparatedVals, _WrappedVals)
+import Tidy.Codegen.Quine.LensUtils (_LabeledVals, _NameVal, _OneOrDelimitedVals, _QualifiedNameVal, _SeparatedVals, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, liftCodegen)
 import Tidy.Codegen.Quine.Utils (exprApp1)
 
@@ -164,12 +164,7 @@ genModule filePath (Module
         pure $ exprApp cg.declDerive
           [ maybeName
           , exprArray generatedConstraints
-          , exprString $ viewOn className (_QualifiedName <<< to \rec -> do
-              let
-                modPart = preview (_Just <<< _ModuleName) rec.module
-                namePart = view _Proper rec.name
-              maybe namePart (\m -> m <> "." <> namePart) modPart
-            )
+          , exprString $ viewOn className (_QualifiedNameVal (view _Proper))
           , exprArray generatedTypes
           ]
 
@@ -225,12 +220,7 @@ genModule filePath (Module
             pure $ exprApp cg.declInfix
               [ ctor_Infix
               , exprInt $ snd prec
-              , exprString $ viewOn qual (_QualifiedName <<< to \rec -> do
-                  let
-                    modPart = preview (_Just <<< _ModuleName) rec.module
-                    namePart = either (view _Ident) (view _Proper) rec.name
-                  maybe namePart (\m -> m <> "." <> namePart) modPart
-                )
+              , exprString $ viewOn qual (_QualifiedNameVal (either (view _Ident) (view _Proper)))
               , exprString $ viewOn op (_NameVal <<< _Operator)
               ]
           -- FixityType SourceToken (QualifiedName Proper) SourceToken (Name Operator)
@@ -247,12 +237,7 @@ genModule filePath (Module
             pure $ exprApp cg.declInfixType
               [ ctor_Infix
               , exprInt $ snd prec
-              , exprString $ viewOn qual (_QualifiedName <<< to \rec -> do
-                  let
-                    modPart = preview (_Just <<< _ModuleName) rec.module
-                    namePart = view _Proper rec.name
-                  maybe namePart (\m -> m <> "." <> namePart) modPart
-                )
+              , exprString $ viewOn qual (_QualifiedNameVal (view _Proper))
               , exprString $ viewOn op (_NameVal <<< _Operator)
               ]
 
@@ -356,11 +341,147 @@ genModule filePath (Module
         ]
 
   genType :: Partial => Type Void -> Quine Void (Expr Void)
-  genType ty = do
-    cg <- liftCodegen $ importFrom "Tidy.Codegen"
+  genType = case _ of
+    -- TypeVar (Name Ident)
+    TypeVar nameIdent -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeVar: importValue "typeVar"
+          }
+      pure $ exprApp cg.typeVar
+        [ exprString $ view (_NameVal <<< _Ident) nameIdent ]
+
+    -- TypeConstructor (QualifiedName Proper) -> do
+    TypeConstructor qualProper -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
           { typeCtor: importValue "typeCtor"
           }
-    pure $ exprApp cg.typeCtor [ exprString "GenType_TODO" ]
+      pure $ exprApp cg.typeCtor [ exprString "Requires importing type" ]
+
+    -- TypeWildcard SourceToken -> do
+    TypeWildcard _ -> do
+      liftCodegen $ importFrom "Tidy.Codegen" $ importValue "typeWildcard"
+
+    -- TypeHole (Name Ident) -> do
+    TypeHole _ -> do
+      pure $ exprString "Type holes not yet supported in tidy codegen"
+
+    -- TypeString SourceToken String
+    TypeString _ str -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeString: importValue "typeString"
+          }
+      pure $ exprApp cg.typeString
+        [ exprString str
+        ]
+
+    -- TypeRow (Wrapped (Row e))
+    TypeRow wrappedRow -> do
+      pure $ exprString "Type Row not supported yet"
+
+    -- TypeRecord (Wrapped (Row e))
+    TypeRecord wrappedRow -> do
+      pure $ exprString "Type Record not supported yet"
+
+    -- TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)
+    TypeForall _ tyVars _ ty -> do
+      -- typeForall tyvars ty
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeForall: importValue "typeForall"
+          }
+      pure $ exprString "TypeForall not supported yet"
+
+    -- TypeKinded (Type e) SourceToken (Type e)
+    TypeKinded ty _ kind -> do
+      -- typeKinded ty kind
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeKinded: importValue "typeKinded"
+          }
+      generatedType <- genType ty
+      generatedKind <- genType kind
+      pure $ exprApp cg.typeKinded
+        [ generatedType
+        , generatedKind
+        ]
+
+    -- TypeApp (Type e) (NonEmptyArray (Type e))
+    TypeApp ty args -> do
+      -- typeApp ty args
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeApp: importValue "typeApp"
+          }
+      generatedType <- genType ty
+      generatedArgs <- traverse genType args
+      pure $ exprApp cg.typeApp
+        [ generatedType
+        , exprArray $ NEA.toArray generatedArgs
+        ]
+
+    -- TypeOp (Type e) (NonEmptyArray (Tuple (QualifiedName Operator) (Type e)))
+    TypeOp ty binOps -> do
+      generatedType <- genType ty
+      generatedBinOps <- do
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { binaryOp: importValue "binaryOp"
+          }
+        for binOps \(Tuple qualOp nextTy) -> do
+          generatedNextType <- genType nextTy
+          pure $ exprApp cg.binaryOp
+            [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
+            , generatedNextType
+            ]
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeOp: importValue "typeOp"
+          }
+      pure $ exprApp cg.typeOp
+        [ generatedType
+        , exprArray $ NEA.toArray generatedBinOps
+        ]
+
+    -- TypeOpName (QualifiedName Operator)
+    TypeOpName qualOp -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeOpName: importValue "typeOpName"
+          }
+      pure $ exprApp cg.typeOpName
+        [ exprString $ viewOn qualOp (_QualifiedNameVal (view _Operator))
+        ]
+
+    -- TypeArrow (Type e) SourceToken (Type e)
+    TypeArrow left _ right -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeArrow: importValue "typeArrow"
+          }
+      pure $ exprApp cg.typeArrow
+        -- TODO: finish this implementation
+        []
+
+    -- TypeArrowName SourceToken
+    TypeArrowName _ -> do
+      liftCodegen $ importFrom "Tidy.Codegen" $ importValue "typeArrowName"
+
+    -- TypeConstrained (Type e) SourceToken (Type e)
+    TypeConstrained args _ rest -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeConstrained: importValue "typeConstrained"
+          }
+      pure $ exprApp cg.typeConstrained
+        -- TODO: finish this implementation
+        []
+
+    -- TypeParens (Wrapped (Type e))
+    TypeParens wrappedTy -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { typeParens: importValue "typeParens"
+          }
+      generatedType <- genType $ viewOn wrappedTy (_WrappedVals)
+      pure $ exprApp cg.typeParens [ generatedType ]
+
+    -- TypeUnaryRow SourceToken (Type e)
+    TypeUnaryRow _ ty -> do
+      pure $ exprString "TypeUnaryRow not supported by tidy codegen yet"
+
+    TypeError e ->
+      absurd e
 
   genFunDep :: Partial => ClassFundep -> Quine Void (Expr Void)
   genFunDep = const $ pure $ exprString "genFunDep Not yet implemented"
