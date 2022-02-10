@@ -324,18 +324,18 @@ genModule filePath (Module
   genTyVar = case _ of
     TypeVarName n -> do
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-        { tyVar: importValue "tyVar"
+        { typeVar: importValue "typeVar"
         }
-      pure $ exprApp cg.tyVar
+      pure $ exprApp cg.typeVar
         [ exprString $ view (_NameVal <<< _Ident) n ]
     TypeVarKinded nWithK -> do
       let
         { label, value } = view (_WrappedVals <<< _LabeledVals) nWithK
       generatedType <- genType value
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
-        { tyVarKinded: importValue "tyVarKinded"
+        { typeVarKinded: importValue "typeVarKinded"
         }
-      pure $ exprApp cg.tyVarKinded
+      pure $ exprApp cg.typeVarKinded
         [ exprString $ view (_NameVal <<< _Ident) label
         , generatedType
         ]
