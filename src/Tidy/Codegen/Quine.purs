@@ -366,6 +366,7 @@ genModule filePath outModName (Module
 
     -- TypeHole (Name Ident) -> do
     TypeHole _ -> do
+      -- TODO: update Tidy Codegen to handle this
       pure $ exprString "Type holes not yet supported in tidy codegen"
 
     -- TypeString SourceToken String
