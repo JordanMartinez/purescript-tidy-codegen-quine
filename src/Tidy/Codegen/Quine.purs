@@ -212,6 +212,17 @@ genModule filePath outModName (Module
         ]
 
     -- DeclValue (ValueBindingFields e)
+    DeclValue { name, binders, guarded } -> do
+      cg <- liftCodegen $ importFrom "Tidy.Codegen"
+        { declValue: importValue "declValue"
+        }
+      generatedBinders <- genBinders binders
+      generatedGuard <- genGuarded guarded
+      pure $ exprApp cg.declValue
+        [ exprString $ viewOn name (_NameVal <<< _Ident)
+        , exprArray generatedBinders
+        , generatedGuard
+        ]
 
     -- DeclFixity FixityFields
     DeclFixity { keyword, operator, prec } -> do
@@ -309,9 +320,6 @@ genModule filePath outModName (Module
 
     DeclError e ->
       absurd e
-
-    _ ->
-      pure $ exprString "This declaration is not yet supported..."
 
   genCtors :: Partial => Array (DataCtor Void) -> Quine Void (Array (Expr Void))
   genCtors ctorArray = do
