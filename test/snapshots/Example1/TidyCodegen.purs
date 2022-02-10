@@ -8,7 +8,7 @@ import Effect.Aff (launchAff_)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Tidy.Codegen (binaryOp, declSignature, declValue, doDiscard, exprApp, exprDo, exprIdent, exprOp, exprString, exprWhere, printModule, typeApp)
+import Tidy.Codegen (binaryOp, declSignature, declValue, doDiscard, exprApp, exprDo, exprIdent, exprOp, exprString, printModule, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importFrom, importType)
 
 main :: Effect Unit
@@ -23,22 +23,19 @@ main = launchAff_ do
     tell
       [ declSignature "main" (typeApp varName [ varName ])
       , declValue "main" []
-          ( exprWhere
-              ( exprApp (exprIdent "launchAff_")
-                  [ exprDo
-                      [ doDiscard
-                          ( exprApp (exprIdent "log")
-                              [ exprString "This is some text I'm logging to the console" ]
-                          )
-                      , doDiscard (exprApp (exprIdent "pure") [ exprIdent "unit" ])
-                      ]
-                      ( doDiscard
-                          ( exprOp (exprIdent "log")
-                              [ binaryOp "$" (exprApp (exprIdent "show") [ exprString "foo" ]) ]
-                          )
+          ( exprApp (exprIdent "launchAff_")
+              [ exprDo
+                  [ doDiscard
+                      ( exprApp (exprIdent "log")
+                          [ exprString "This is some text I'm logging to the console" ]
                       )
+                  , doDiscard (exprApp (exprIdent "pure") [ exprIdent "unit" ])
                   ]
-              )
-              []
+                  ( doDiscard
+                      ( exprOp (exprIdent "log")
+                          [ binaryOp "$" (exprApp (exprIdent "show") [ exprString "foo" ]) ]
+                      )
+                  )
+              ]
           )
       ]
