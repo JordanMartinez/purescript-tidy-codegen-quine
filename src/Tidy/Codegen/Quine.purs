@@ -310,7 +310,7 @@ genModule
 
       -- ForeignKind SourceToken (Name Proper) ->
       ForeignKind _ _proper ->
-        pure $ exprString "ForeignKind is deprecated syntax"
+        unsafeCrashWith "Foreign kind syntax is deprecated"
 
     -- DeclRole SourceToken SourceToken (Name Proper) (NonEmptyArray (Tuple SourceToken Role))
     DeclRole _ _ name roles -> do
