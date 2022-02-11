@@ -5,6 +5,7 @@ import Prim hiding (Type, Row)
 
 import Control.Monad.State (get)
 import Control.Monad.Writer (tell)
+import Data.Array (groupBy)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
@@ -21,7 +22,7 @@ import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import PureScript.CST.RecordLens (_value)
 import PureScript.CST.Types (Binder(..), ClassFundep, DataCtor(..), Declaration(..), DoStatement(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident, Instance, InstanceBinding(..), IntValue(..), Labeled, LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), PatternGuard, RecordLabeled(..), RecordUpdate(..), Role(..), Row, Type(..), TypeVarBinding(..), Where, Wrapped)
 import PureScript.CST.Types.Lens (_Ident, _Label, _Operator, _Proper, _SourceToken, _TokLowerName)
-import Tidy.Codegen (declSignature, declValue, exprApp, exprArray, exprBool, exprChar, exprDo, exprIdent, exprInt, exprIntHex, exprNumber, exprOp, exprString, exprWhere, letValue, typeApp)
+import Tidy.Codegen (declSignature, declValue, doDiscard, exprApp, exprArray, exprBool, exprChar, exprDo, exprIdent, exprInt, exprIntHex, exprNumber, exprOp, exprString, exprWhere, letValue, typeApp)
 import Tidy.Codegen.Monad (codegenModule, importCtor, importFrom, importOp, importOpen, importType, importValue)
 import Tidy.Codegen.Quine.LensUtils (_DelimitedNonEmptyVals, _DelimitedVals, _GuardedExprVal, _InstanceVal, _LabeledVals, _NameVal, _OneOrDelimitedVals, _PatternGuardVal, _QualifiedNameVal, _RowVal, _SeparatedVals, _WhereVal, _WrappedVals)
 import Tidy.Codegen.Quine.Monad (Quine, codegenQuine, doImportCtor, doImportType, liftCodegen)
@@ -90,14 +91,61 @@ genModule
   genDoBlock = do
     decls <- traverse genDeclaration originalDeclarations
     { imports } <- get
-    fn_tell <- liftCodegen $ importFrom "Control.Monad.Writer" $ importValue "tell"
-    pure
-      $ exprDo imports
-      $ exprApp fn_tell
-          [ exprArray decls
-          ]
+    let
+      declExportGroups :: Array (NonEmptyArray { exported :: Boolean, decl :: Expr Void })
+      declExportGroups = groupBy (\l r -> l.exported == r.exported) decls
+    case declExportGroups of
+      [] -> do
+        prelude <- liftCodegen $ importFrom "Prelude"
+          { fn_pure: importValue "pure"
+          , val_unit: importValue "unit"
+          }
+        pure
+          $ exprDo imports
+          $ exprApp prelude.fn_pure
+              [ prelude.val_unit
+              ]
+      [ allExported ] -> do
+        fn_tell <- liftCodegen $ importFrom "Control.Monad.Writer" $ importValue "tell"
+        pure
+          $ exprDo imports
+          $ exprApp fn_tell
+              [ exprArray $ map _.decl $ NEA.toArray allExported
+              ]
+      _ | Just { init: topDecls, last: lastDecl } <- Array.unsnoc declExportGroups -> do
+        cg <- liftCodegen $ importFrom "Tidy.Codegen"
+          { write: importValue "write"
+          , writeAndExport: importValue "writeAndExport"
+          , doDiscard: importValue "doDiscard"
+          }
+        tr <- liftCodegen $ importFrom "Data.Foldable"
+          { traverse_: importValue "traverse_"
+          }
+        let
+          genGroup declGroup
+            | (NEA.head declGroup).exported = do
+                exprApp tr.traverse_
+                  [ cg.writeAndExport
+                  , exprArray $ map _.decl $ NEA.toArray declGroup
+                  ]
+            | otherwise = do
+                exprApp tr.traverse_
+                  [ cg.write
+                  , exprArray $ map _.decl $ NEA.toArray declGroup
+                  ]
 
-  genDeclaration :: Partial => Declaration Void -> Quine Void (Expr Void)
+          topDeclDos :: Array (DoStatement Void)
+          topDeclDos = topDecls <#> \neaArr -> do
+            doDiscard $ exprApp cg.doDiscard
+              [ genGroup neaArr
+              ]
+        pure
+          $ exprDo (imports <> topDeclDos)
+          $ genGroup lastDecl
+      _ -> do
+        unsafeCrashWith "This case cannot be reached."
+
+  genDeclaration :: Partial => Declaration Void -> Quine Void { exported :: Boolean, decl :: Expr Void }
   genDeclaration = case _ of
     -- DeclData (DataHead e) (Maybe (Tuple SourceToken (Separated (DataCtor e))))
     DeclData { name, vars } mbCtors -> do
@@ -108,11 +156,14 @@ genModule
       cg <- liftCodegen $ importFrom "Tidy.Codegen"
         { declData: importValue "declData"
         }
-      pure $ exprApp cg.declData
-        [ exprString $ view (_NameVal <<< _Proper) name
-        , exprArray generatedTyVars
-        , exprArray generatedCtors
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declData
+            [ exprString $ view (_NameVal <<< _Proper) name
+            , exprArray generatedTyVars
+            , exprArray generatedCtors
+            ]
+        }
 
     -- DeclType (DataHead e) SourceToken (Type e)
     DeclType { name, vars } _ ty -> do
@@ -122,11 +173,14 @@ genModule
         }
       generatedTyVars <- traverse genTyVar vars
       generatedTy <- genType ty
-      pure $ exprApp cg.declType
-        [ exprString $ view (_NameVal <<< _Proper) name
-        , exprArray generatedTyVars
-        , generatedTy
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declType
+            [ exprString $ view (_NameVal <<< _Proper) name
+            , exprArray generatedTyVars
+            , generatedTy
+            ]
+        }
 
     -- DeclNewtype (DataHead e) SourceToken (Name Proper) (Type e)
     DeclNewtype { name, vars } _ ctor ty -> do
@@ -135,12 +189,15 @@ genModule
         }
       generatedTyVars <- traverse genTyVar vars
       generatedTy <- genType ty
-      pure $ exprApp cg.declNewtype
-        [ exprString $ view (_NameVal <<< _Proper) name
-        , exprArray generatedTyVars
-        , exprString $ view (_NameVal <<< _Proper) ctor
-        , generatedTy
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declNewtype
+            [ exprString $ view (_NameVal <<< _Proper) name
+            , exprArray generatedTyVars
+            , exprString $ view (_NameVal <<< _Proper) ctor
+            , generatedTy
+            ]
+        }
 
     -- DeclClass (ClassHead e) (Maybe (Tuple SourceToken (NonEmptyArray (Labeled (Name Ident) (Type e))))) ->
     DeclClass { super, name, vars, fundeps } members -> do
@@ -151,13 +208,16 @@ genModule
       generatedTyVars <- traverse genTyVar vars
       generatedFunDeps <- traverse genFunDep $ toArrayOf (_Just <<< _2 <<< _SeparatedVals <<< folded) fundeps
       generatedMembers <- traverse genClassMember $ toArrayOf (_Just <<< _2 <<< folded) members
-      pure $ exprApp cg.declClass
-        [ exprArray generatedSuper
-        , exprString $ view (_NameVal <<< _Proper) name
-        , exprArray generatedTyVars
-        , exprArray generatedFunDeps
-        , exprArray generatedMembers
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declClass
+            [ exprArray generatedSuper
+            , exprString $ view (_NameVal <<< _Proper) name
+            , exprArray generatedTyVars
+            , exprArray generatedFunDeps
+            , exprArray generatedMembers
+            ]
+        }
 
     -- DeclInstanceChain (Separated (Instance e))
     DeclInstanceChain sep -> do
@@ -165,9 +225,12 @@ genModule
         { declInstanceChain: importValue "declInstanceChain"
         }
       generatedInstances <- genDeclInstances $ toArrayOfOn sep (_SeparatedVals <<< folded)
-      pure $ exprApp cg.declInstanceChain
-        [ exprArray generatedInstances
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declInstanceChain
+            [ exprArray generatedInstances
+            ]
+        }
 
     -- DeclDerive SourceToken (Maybe SourceToken) (InstanceHead e)
     DeclDerive _ _ { name, constraints, className, types } -> do
@@ -180,12 +243,15 @@ genModule
         }
       generatedConstraints <- traverse genType $ toArrayOfOn constraints (_Just <<< _1 <<< _OneOrDelimitedVals <<< folded)
       generatedTypes <- traverse genType types
-      pure $ exprApp cg.declDerive
-        [ maybeName
-        , exprArray generatedConstraints
-        , exprString $ viewOn className (_QualifiedNameVal (view _Proper))
-        , exprArray generatedTypes
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declDerive
+            [ maybeName
+            , exprArray generatedConstraints
+            , exprString $ viewOn className (_QualifiedNameVal (view _Proper))
+            , exprArray generatedTypes
+            ]
+        }
 
     -- DeclKindSignature SourceToken (Labeled (Name Proper) (Type e))
     DeclKindSignature keyword lbld -> do
@@ -200,10 +266,13 @@ genModule
             Just "type" -> "declTypeSignature"
             _ -> unsafeCrashWith "Invalid decl kind signature keyword"
       generatedType <- genType value
-      pure $ exprApp fn_declKeywordSignature
-        [ exprString $ view (_NameVal <<< _Proper) label
-        , generatedType
-        ]
+      pure
+        { exported: true
+        , decl: exprApp fn_declKeywordSignature
+            [ exprString $ view (_NameVal <<< _Proper) label
+            , generatedType
+            ]
+        }
 
     -- DeclSignature (Labeled (Name Ident) (Type e))
     DeclSignature lbld -> do
@@ -213,10 +282,13 @@ genModule
         { declSignature: importValue "declSignature"
         }
       generatedType <- genType value
-      pure $ exprApp cg.declSignature
-        [ exprString $ view (_NameVal <<< _Ident) label
-        , generatedType
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declSignature
+            [ exprString $ view (_NameVal <<< _Ident) label
+            , generatedType
+            ]
+        }
 
     -- DeclValue (ValueBindingFields e)
     -- DeclValue { name :: Name Ident, binders :: Array (Binder e), guarded :: Guarded e }
@@ -226,17 +298,20 @@ genModule
         }
       generatedBinders <- traverse genBinder binders
       generatedGuard <- genGuarded guarded
-      pure $ exprApp cg.declValue
-        [ exprString $ viewOn name (_NameVal <<< _Ident)
-        , exprArray generatedBinders
-        , generatedGuard
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declValue
+            [ exprString $ viewOn name (_NameVal <<< _Ident)
+            , exprArray generatedBinders
+            , generatedGuard
+            ]
+        }
 
     -- DeclFixity FixityFields
     DeclFixity { keyword, operator, prec } -> do
       -- declInfix Infix 4 "map" "<$>"
       -- declInfix (snd keyword) (snd prec) case operator of
-      case operator of
+      decl <- case operator of
         -- FixityValue (QualifiedName (Either Ident Proper)) SourceToken (Name Operator)
         FixityValue qual _ op -> do
           cg <- liftCodegen $ importFrom "Tidy.Codegen"
@@ -279,6 +354,10 @@ genModule
             , exprString $ viewOn qual (_QualifiedNameVal (view _Proper))
             , exprString $ viewOn op (_NameVal <<< _Operator)
             ]
+      pure
+        { exported: true
+        , decl
+        }
 
     -- DeclForeign SourceToken SourceToken (Foreign e)
     DeclForeign _ _ forgn -> case forgn of
@@ -290,10 +369,13 @@ genModule
           }
         let { label, value } = view _LabeledVals lbld
         generatedType <- genType value
-        pure $ exprApp cg.declForeign
-          [ exprString $ view (_NameVal <<< _Ident) label
-          , generatedType
-          ]
+        pure
+          { exported: true
+          , decl: exprApp cg.declForeign
+              [ exprString $ view (_NameVal <<< _Ident) label
+              , generatedType
+              ]
+          }
 
       -- ForeignData SourceToken (Labeled (Name Proper) (Type e)) ->
       ForeignData _ lbld -> do
@@ -303,10 +385,13 @@ genModule
           }
         let { label, value } = view _LabeledVals lbld
         generatedType <- genType value
-        pure $ exprApp cg.declForeignData
-          [ exprString $ view (_NameVal <<< _Proper) label
-          , generatedType
-          ]
+        pure
+          { exported: true
+          , decl: exprApp cg.declForeignData
+              [ exprString $ view (_NameVal <<< _Proper) label
+              , generatedType
+              ]
+          }
 
       -- ForeignKind SourceToken (Name Proper) ->
       ForeignKind _ _proper ->
@@ -329,10 +414,13 @@ genModule
           Nominal -> cst.nominal
           Representational -> cst.representational
         generatedRoles = map (genRole <<< snd) $ NEA.toArray roles
-      pure $ exprApp cg.declRole
-        [ exprString $ view (_NameVal <<< _Proper) name
-        , exprArray generatedRoles
-        ]
+      pure
+        { exported: true
+        , decl: exprApp cg.declRole
+            [ exprString $ view (_NameVal <<< _Proper) name
+            , exprArray generatedRoles
+            ]
+        }
 
     DeclError e ->
       absurd e
